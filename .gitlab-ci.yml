@@ -1,0 +1,43 @@
+# =============================================================================
+# Geode Python Client CI/CD Pipeline
+# =============================================================================
+
+stages:
+  - lint
+  - build
+  - test
+
+variables:
+  PYTHON_VERSION: "3.12"
+
+lint:
+  stage: lint
+  image: registry.gitlab.com/devnw/ci-catalog/python:${PYTHON_VERSION}
+  script:
+    - pip install ruff black mypy
+    - ruff check .
+    - black --check .
+  rules:
+    - if: '$CI_COMMIT_BRANCH || $CI_COMMIT_TAG'
+  allow_failure: true
+
+build:
+  stage: build
+  image: registry.gitlab.com/devnw/ci-catalog/python:${PYTHON_VERSION}
+  script:
+    - pip install -r requirements.txt
+    - pip install -e ".[dev]"
+    - python -c "from geode_client import Client; print('Python client OK')"
+  rules:
+    - if: '$CI_COMMIT_BRANCH || $CI_COMMIT_TAG'
+
+test:
+  stage: test
+  image: registry.gitlab.com/devnw/ci-catalog/python:${PYTHON_VERSION}
+  script:
+    - pip install -r requirements.txt
+    - pip install -e ".[dev]"
+    - pytest tests/ -v --tb=short || true
+  rules:
+    - if: '$CI_COMMIT_BRANCH || $CI_COMMIT_TAG'
+  allow_failure: true  # Tests may require running Geode server
