@@ -1,43 +1,27 @@
 # =============================================================================
 # Geode Python Client CI/CD Pipeline
+# Uses DevNW CI/CD Catalog components
 # =============================================================================
+
+include:
+  - component: gitlab.com/devnw/ci-catalog/python-lint@latest
+    inputs:
+      stage: lint
+      source_path: "geode_client/"
+      allow_failure: true
+
+  - component: gitlab.com/devnw/ci-catalog/python-install@latest
+    inputs:
+      stage: build
+      python_version: "3.13"
+
+  - component: gitlab.com/devnw/ci-catalog/python-test@latest
+    inputs:
+      stage: test
+      python_version: "3.13"
+      allow_failure: true  # Tests may require running Geode server
 
 stages:
   - lint
   - build
   - test
-
-variables:
-  PYTHON_VERSION: "3.12"
-
-lint:
-  stage: lint
-  image: registry.gitlab.com/devnw/ci-catalog/python:${PYTHON_VERSION}
-  script:
-    - pip install ruff black mypy
-    - ruff check .
-    - black --check .
-  rules:
-    - if: '$CI_COMMIT_BRANCH || $CI_COMMIT_TAG'
-  allow_failure: true
-
-build:
-  stage: build
-  image: registry.gitlab.com/devnw/ci-catalog/python:${PYTHON_VERSION}
-  script:
-    - pip install -r requirements.txt
-    - pip install -e ".[dev]"
-    - python -c "from geode_client import Client; print('Python client OK')"
-  rules:
-    - if: '$CI_COMMIT_BRANCH || $CI_COMMIT_TAG'
-
-test:
-  stage: test
-  image: registry.gitlab.com/devnw/ci-catalog/python:${PYTHON_VERSION}
-  script:
-    - pip install -r requirements.txt
-    - pip install -e ".[dev]"
-    - pytest tests/ -v --tb=short || true
-  rules:
-    - if: '$CI_COMMIT_BRANCH || $CI_COMMIT_TAG'
-  allow_failure: true  # Tests may require running Geode server
