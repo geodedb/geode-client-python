@@ -19,7 +19,7 @@ setup(
     description="Python QUIC client library for Geode graph database",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://gitlab.com/devnw/geode/geode-client-python",
+    url="https://gitlab.com/devnw/codepros/geode/geode-client-python",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

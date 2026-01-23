@@ -1,6 +1,6 @@
 # Geode Python Client
 
-A modern, async Python client library for [Geode](https://gitlab.com/devnw/geode/geode) graph database with full GQL (ISO/IEC 39075:2024) support via QUIC+TLS.
+A modern, async Python client library for [Geode](https://gitlab.com/devnw/codepros/geode/geode) graph database with full GQL (ISO/IEC 39075:2024) support via QUIC+TLS.
 
 ## Features
 
@@ -451,6 +451,6 @@ Contributions are welcome! Please:
 
 ## Related
 
-- [Geode Database](https://gitlab.com/devnw/geode/geode) - Main database project
+- [Geode Database](https://gitlab.com/devnw/codepros/geode/geode) - Main database project
 - [Go Client](../go/) - Production-ready Go client
 - [Rust Client](../rust/) - High-performance Rust client
