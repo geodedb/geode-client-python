@@ -10,6 +10,11 @@ from .client import (
     Page,
     Column,
     Savepoint,
+    PreparedStatement,
+    QueryPlan,
+    QueryProfile,
+    PlanOperation,
+    BatchResult,
     open_database,
     GeodeError,
     GeodeConnectionError,
@@ -36,6 +41,8 @@ from .auth import (
     SessionInfo,
 )
 from .pool import ConnectionPool
+from . import validate
+from .validate import ValidationError
 
 __version__ = "0.1.0"
 __all__ = [
@@ -45,6 +52,11 @@ __all__ = [
     "Page",
     "Column",
     "Savepoint",
+    "PreparedStatement",
+    "QueryPlan",
+    "QueryProfile",
+    "PlanOperation",
+    "BatchResult",
     "open_database",
     # Exceptions
     "GeodeError",
@@ -69,4 +81,7 @@ __all__ = [
     "SessionInfo",
     # Pool
     "ConnectionPool",
+    # Validation
+    "validate",
+    "ValidationError",
 ]

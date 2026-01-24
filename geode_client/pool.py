@@ -5,7 +5,7 @@ Provides efficient connection reuse for concurrent workloads.
 """
 
 import asyncio
-from typing import AsyncContextManager, Optional
+from typing import Optional
 
 from .client import Client, Connection
 
@@ -37,7 +37,7 @@ class ConnectionPool:
         min_size: int = 2,
         max_size: int = 10,
         timeout: float = 30.0,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize connection pool.
@@ -76,7 +76,9 @@ class ConnectionPool:
         """Create a new connection."""
         async with self._lock:
             if self._size >= self.max_size:
-                raise RuntimeError(f"Connection pool is full (max_size={self.max_size})")
+                raise RuntimeError(
+                    f"Connection pool is full (max_size={self.max_size})"
+                )
             self._size += 1
 
         try:
@@ -87,7 +89,7 @@ class ConnectionPool:
                 self._size -= 1
             raise
 
-    async def acquire(self) -> 'PooledConnection':
+    def acquire(self) -> "PooledConnection":
         """
         Acquire a connection from the pool.
 
@@ -105,13 +107,14 @@ class ConnectionPool:
         if self._closed:
             raise RuntimeError("Connection pool is closed")
 
-        if not self._initialized:
-            await self.initialize()
-
         return PooledConnection(self)
 
     async def _acquire(self) -> Connection:
         """Internal method to acquire a connection."""
+        # Ensure pool is initialized
+        if not self._initialized:
+            await self.initialize()
+
         try:
             # Try to get an existing connection
             conn = self._pool.get_nowait()
@@ -167,7 +170,7 @@ class ConnectionPool:
         self._size = 0
         self._initialized = False
 
-    async def __aenter__(self) -> 'ConnectionPool':
+    async def __aenter__(self) -> "ConnectionPool":
         """Async context manager entry."""
         await self.initialize()
         return self
@@ -227,7 +230,7 @@ async def create_pool(
     port: int = 8443,
     min_size: int = 2,
     max_size: int = 10,
-    **kwargs
+    **kwargs,
 ) -> ConnectionPool:
     """
     Create and initialize a connection pool.

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 
 class ValueKind(Enum):
     """Kind of value stored in a Value object."""
+
     NULL = auto()
     INT = auto()
     BOOL = auto()
@@ -39,8 +40,9 @@ class ValueKind(Enum):
 @dataclass
 class Range:
     """Represents a range type value."""
-    lower: Optional['Value'] = None
-    upper: Optional['Value'] = None
+
+    lower: Optional["Value"] = None
+    upper: Optional["Value"] = None
     bounds: str = ""  # e.g., "[)" for [lower, upper)
 
 
@@ -51,14 +53,15 @@ class Value:
 
     Supports all GQL types including DECIMAL, temporal types, and advanced types.
     """
+
     kind: ValueKind
     int_value: int = 0
     bool_value: bool = False
     str_value: str = ""
     decimal_value: Optional[Decimal] = None
     decimal_scale: str = ""
-    array_value: List['Value'] = None
-    object_value: Dict[str, 'Value'] = None
+    array_value: Optional[List["Value"]] = None
+    object_value: Optional[Dict[str, "Value"]] = None
     bytes_value: bytes = b""
     time_value: Optional[Union[datetime, date, time]] = None
     range_value: Optional[Range] = None
@@ -88,12 +91,22 @@ class Value:
         elif self.kind == ValueKind.DECIMAL:
             return self.decimal_value
         elif self.kind == ValueKind.ARRAY:
-            return [v.raw_value for v in self.array_value]
+            return [v.raw_value for v in self.array_value] if self.array_value else []
         elif self.kind == ValueKind.OBJECT:
-            return {k: v.raw_value for k, v in self.object_value.items()}
+            return (
+                {k: v.raw_value for k, v in self.object_value.items()}
+                if self.object_value
+                else {}
+            )
         elif self.kind == ValueKind.BYTEA:
             return self.bytes_value
-        elif self.kind in (ValueKind.DATE, ValueKind.TIME, ValueKind.TIMESTAMP, ValueKind.TIMESTAMPTZ, ValueKind.TIMETZ):
+        elif self.kind in (
+            ValueKind.DATE,
+            ValueKind.TIME,
+            ValueKind.TIMESTAMP,
+            ValueKind.TIMESTAMPTZ,
+            ValueKind.TIMETZ,
+        ):
             return self.time_value
         elif self.kind == ValueKind.RANGE:
             return self.range_value
@@ -131,21 +144,21 @@ class Value:
     @property
     def as_decimal(self) -> Decimal:
         """Get value as Decimal."""
-        if self.kind == ValueKind.DECIMAL:
+        if self.kind == ValueKind.DECIMAL and self.decimal_value is not None:
             return self.decimal_value
         raise ValueError(f"Cannot convert {self.kind} to Decimal")
 
     @property
-    def as_array(self) -> List['Value']:
+    def as_array(self) -> List["Value"]:
         """Get value as array."""
-        if self.kind == ValueKind.ARRAY:
+        if self.kind == ValueKind.ARRAY and self.array_value is not None:
             return self.array_value
         raise ValueError(f"Cannot convert {self.kind} to array")
 
     @property
-    def as_object(self) -> Dict[str, 'Value']:
+    def as_object(self) -> Dict[str, "Value"]:
         """Get value as object."""
-        if self.kind == ValueKind.OBJECT:
+        if self.kind == ValueKind.OBJECT and self.object_value is not None:
             return self.object_value
         raise ValueError(f"Cannot convert {self.kind} to object")
 
@@ -169,13 +182,17 @@ class Value:
         """Get value as date."""
         if self.kind == ValueKind.DATE:
             if isinstance(self.time_value, (date, datetime)):
-                return self.time_value if isinstance(self.time_value, date) else self.time_value.date()
+                return (
+                    self.time_value
+                    if isinstance(self.time_value, date)
+                    else self.time_value.date()
+                )
         raise ValueError(f"Cannot convert {self.kind} to date")
 
     @property
     def as_range(self) -> Range:
         """Get value as range."""
-        if self.kind == ValueKind.RANGE:
+        if self.kind == ValueKind.RANGE and self.range_value is not None:
             return self.range_value
         raise ValueError(f"Cannot convert {self.kind} to range")
 
@@ -191,9 +208,9 @@ class Value:
         elif self.kind == ValueKind.DECIMAL:
             return f"Value(DECIMAL: {self.decimal_value})"
         elif self.kind == ValueKind.ARRAY:
-            return f"Value(ARRAY: {len(self.array_value)} items)"
+            return f"Value(ARRAY: {len(self.array_value) if self.array_value else 0} items)"
         elif self.kind == ValueKind.OBJECT:
-            return f"Value(OBJECT: {len(self.object_value)} fields)"
+            return f"Value(OBJECT: {len(self.object_value) if self.object_value else 0} fields)"
         else:
             return f"Value({self.kind.name})"
 
@@ -219,7 +236,7 @@ def decode_value(raw: Any, type_name: str) -> Value:
     elif type_upper == "DECIMAL":
         s = str(raw).strip('"')
         dec = Decimal(s)
-        scale = s.split('.')[-1] if '.' in s else ""
+        scale = s.split(".")[-1] if "." in s else ""
         return Value(kind=ValueKind.DECIMAL, decimal_value=dec, decimal_scale=scale)
     elif type_upper == "BOOL":
         return Value(kind=ValueKind.BOOL, bool_value=bool(raw))
@@ -257,14 +274,14 @@ def decode_value(raw: Any, type_name: str) -> Value:
     elif type_upper == "TIMESTAMP":
         s = str(raw)
         try:
-            dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
             return Value(kind=ValueKind.TIMESTAMP, str_value=s, time_value=dt)
         except ValueError:
             return Value(kind=ValueKind.TIMESTAMP, str_value=s)
     elif type_upper == "TIMESTAMPTZ":
         s = str(raw)
         try:
-            dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
             return Value(kind=ValueKind.TIMESTAMPTZ, str_value=s, time_value=dt)
         except ValueError:
             return Value(kind=ValueKind.TIMESTAMPTZ, str_value=s)

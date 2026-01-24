@@ -303,17 +303,29 @@ range_val = row["period"].as_range
 quic://host:port?param=value&param2=value2
 ```
 
-### Available Parameters
+### Configuration Reference
 
-- `page_size` - Results page size (default: 1000)
-- `hello_name` - Client name (default: "geode-python")
-- `hello_ver` - Client version (default: "0.1.0")
-- `conformance` - GQL conformance level (default: "min")
-- `ca_cert` - CA certificate path for server verification
-- `client_cert` - Client certificate path for mTLS
-- `client_key` - Client key path for mTLS
-- `skip_verify` - Skip TLS verification (default: false, **insecure**)
-- `server_name` - SNI server name (default: hostname)
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `host` | str | `"127.0.0.1"` | Server hostname or IP address |
+| `port` | int | `3141` | Server port number |
+| `page_size` | int | `1000` | Results page size (1-100,000) |
+| `hello_name` | str | `"geode-python"` | Client identification name |
+| `hello_ver` | str | `"0.1.0"` | Client version string |
+| `conformance` | str | `"min"` | GQL conformance level (`"min"` or `"full"`) |
+| `ca_cert` | str | `None` | Path to CA certificate for server verification |
+| `client_cert` | str | `None` | Path to client certificate for mTLS |
+| `client_key` | str | `None` | Path to client private key for mTLS |
+| `skip_verify` | bool | `False` | Skip TLS certificate verification (**insecure**) |
+| `server_name` | str | hostname | SNI server name for TLS |
+
+### Pool Configuration
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `min_size` | int | `1` | Minimum connections to maintain |
+| `max_size` | int | `10` | Maximum connections allowed |
+| `timeout` | float | `30.0` | Connection acquisition timeout (seconds) |
 
 ### Example with TLS
 
@@ -368,41 +380,98 @@ python examples/transactions_example.py
 ### Setup Development Environment
 
 ```bash
-# Install in editable mode with dev dependencies
-pip install -e ".[dev]"
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install in editable mode with all dev dependencies
+pip install -e ".[dev,integration,benchmark,property]"
 ```
 
 ### Running Tests
 
-```bash
-# Run tests
-pytest
+The test suite includes unit tests, integration tests, property-based tests, and benchmarks.
 
-# Run tests with coverage
-pytest --cov=geode_client
+```bash
+# Run all unit tests (377 tests)
+pytest tests/unit/
+
+# Run with coverage report
+pytest tests/unit/ --cov=geode_client --cov-report=term-missing
+
+# Run specific test module
+pytest tests/unit/test_types.py -v
+
+# Run integration tests (requires Docker, 119 tests)
+pytest tests/integration/ -m integration
+
+# Run property-based tests (50 tests)
+pytest tests/property/ -v
+
+# Run benchmarks (154 benchmarks)
+pytest benchmarks/ --benchmark-only
+
+# Run quick benchmark subset
+pytest benchmarks/bench_types.py --benchmark-only --benchmark-min-rounds=3
 ```
+
+### Test Categories
+
+| Category | Location | Count | Description |
+|----------|----------|-------|-------------|
+| Unit | `tests/unit/` | 377 | Module-level tests with mocks |
+| Integration | `tests/integration/` | 119 | End-to-end tests with Docker |
+| Property | `tests/property/` | 50 | Hypothesis-based fuzz testing |
+| Benchmark | `benchmarks/` | 154 | Performance measurements |
 
 ### Code Quality
 
 ```bash
-# Format code
-black geode_client/
+# Run ruff linter (preferred)
+ruff check geode_client/
 
-# Type checking
+# Auto-fix linter issues
+ruff check geode_client/ --fix
+
+# Format code with ruff
+ruff format geode_client/
+
+# Type checking with mypy
 mypy geode_client/
 
-# Linting
-ruff check geode_client/
+# Run all quality checks
+ruff check geode_client/ && ruff format --check geode_client/ && mypy geode_client/
 ```
 
 ## Performance
 
-The QUIC client provides:
+The QUIC client provides excellent performance characteristics:
 
-- **Low latency**: ~2-3ms per query (localhost)
-- **High throughput**: 1000+ queries/second with connection pooling
-- **Efficient**: Zero-copy where possible, minimal allocations
-- **Concurrent**: Full async support for parallel queries
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Connection establishment | ~50-100ms | QUIC handshake + TLS |
+| Query latency | ~2-3ms | Localhost, simple queries |
+| Throughput | 1000+ q/s | With connection pooling |
+| Result parsing | ~1ms/1000 rows | JSON decoding |
+
+### Performance Tips
+
+- **Use connection pooling** for concurrent workloads
+- **Use parameterized queries** to avoid query parsing overhead
+- **Set appropriate page sizes** based on result set size
+- **Reuse QueryBuilder patterns** instead of creating new instances
+
+```python
+# Good: Reuse pattern with different parameters
+pattern = QueryBuilder().match("(n:Person)").where("n.id = $id").return_("n")
+for i in range(100):
+    query, params = pattern.with_param("id", i).build()
+
+# Good: Use connection pool for concurrent queries
+async with ConnectionPool(min_size=5, max_size=20) as pool:
+    tasks = [fetch_data(pool, i) for i in range(100)]
+    await asyncio.gather(*tasks)
+```
 
 ## Troubleshooting
 
@@ -440,17 +509,98 @@ pip install aioquic
 
 MIT License - see LICENSE file for details.
 
+## Input Validation
+
+The client includes an input validation module for sanitizing user input:
+
+```python
+from geode_client import validate, ValidationError
+
+try:
+    # Validate query string
+    query = validate.query(user_input)
+
+    # Validate connection parameters
+    host = validate.hostname(host_input)
+    port = validate.port(port_input)
+    page = validate.page_size(page_input)
+
+    # Validate identifiers
+    label = validate.label(label_input)
+    prop = validate.property_name(prop_input)
+except ValidationError as e:
+    print(f"Invalid input: {e}")
+```
+
+### Available Validators
+
+| Function | Purpose | Example Valid Input |
+|----------|---------|---------------------|
+| `validate.query()` | Query strings | `"RETURN 1"` |
+| `validate.param_name()` | Parameter names | `"user_id"` |
+| `validate.hostname()` | Hosts/IPs | `"localhost"`, `"192.168.1.1"` |
+| `validate.port()` | Port numbers | `3141` (1-65535) |
+| `validate.page_size()` | Page sizes | `1000` (1-100,000) |
+| `validate.identifier()` | GQL identifiers | `"node_name"` |
+| `validate.label()` | Node/edge labels | `"Person"` |
+| `validate.timeout()` | Timeout values | `30.0` (seconds) |
+
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome! Please follow these guidelines:
 
-1. Follow PEP 8 style guide
-2. Add type hints to all functions
-3. Write tests for new features
-4. Update documentation
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch from `main`
+3. Write tests first (TDD recommended)
+4. Implement your changes
+5. Run all quality checks:
+   ```bash
+   ruff check geode_client/ && mypy geode_client/ && pytest tests/unit/
+   ```
+6. Update documentation if needed
+7. Submit a merge request
+
+### Code Standards
+
+- **Style**: Follow PEP 8 (enforced by ruff)
+- **Types**: Add type hints to all public functions
+- **Docs**: Include docstrings with Args, Returns, Raises
+- **Tests**: Maintain 80%+ test coverage
+- **Commits**: Use clear, descriptive commit messages
+
+## API Reference
+
+### Core Classes
+
+| Class | Description |
+|-------|-------------|
+| `Client` | Factory for creating connections. Use `Client.from_url()` for URL config. |
+| `Connection` | Async context manager for database operations. |
+| `Page` | Query result container with columns and rows. |
+| `Value` | Typed value container with accessors (`as_int`, `as_string`, etc.) |
+| `QueryBuilder` | Fluent interface for building GQL queries. |
+| `PatternBuilder` | Builder for graph patterns (nodes, edges). |
+| `PredicateBuilder` | Builder for WHERE clause predicates. |
+| `ConnectionPool` | Connection pool for concurrent workloads. |
+| `AuthClient` | Authentication and authorization operations. |
+
+### Exceptions
+
+| Exception | Description |
+|-----------|-------------|
+| `GeodeError` | Base exception for all Geode errors |
+| `GeodeConnectionError` | Connection establishment failures |
+| `QueryError` | Query execution failures |
+| `AuthError` | Authentication/authorization failures |
+| `ValidationError` | Input validation failures |
+
+For detailed developer documentation, see [CLAUDE.md](CLAUDE.md).
 
 ## Related
 
 - [Geode Database](https://gitlab.com/devnw/codepros/geode/geode) - Main database project
-- [Go Client](../go/) - Production-ready Go client
-- [Rust Client](../rust/) - High-performance Rust client
+- [Go Client](../geode-client-go/) - Production-ready Go client
+- [Rust Client](../geode-client-rust/) - High-performance Rust client
+- [Zig Client](../geode-client-zig/) - Zig client library

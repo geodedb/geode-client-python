@@ -14,6 +14,7 @@ from .client import Connection, AuthError
 @dataclass
 class User:
     """Represents a user in the system."""
+
     id: int
     username: str
     email: str
@@ -26,6 +27,7 @@ class User:
 @dataclass
 class Role:
     """Represents a role in the RBAC system."""
+
     id: int
     name: str
     description: str
@@ -38,6 +40,7 @@ class Role:
 @dataclass
 class Permission:
     """Represents a permission in the system."""
+
     id: int
     name: str
     resource: str
@@ -47,6 +50,7 @@ class Permission:
 @dataclass
 class RLSPolicy:
     """Represents a Row-Level Security policy."""
+
     id: int = 0
     name: str = ""
     table: str = ""
@@ -64,6 +68,7 @@ class RLSPolicy:
 @dataclass
 class SessionInfo:
     """Contains session information."""
+
     token: str
     user_id: int
     username: str
@@ -120,7 +125,7 @@ class AuthClient:
 
         expires_at_str = result.get("expires_at", "")
         try:
-            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
+            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
         except ValueError:
             expires_at = datetime.now()
 
@@ -603,7 +608,7 @@ class AuthClient:
         """Parse user data from JSON response."""
         created_at_str = data.get("created_at", "")
         try:
-            created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+            created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
         except ValueError:
             created_at = datetime.now()
 

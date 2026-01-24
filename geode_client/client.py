@@ -7,17 +7,21 @@ This client uses QUIC+TLS for all connections to Geode server.
 import asyncio
 import json
 import os
-import ssl
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
-from aioquic.quic.events import QuicEvent, StreamDataReceived, StreamReset, ConnectionTerminated, StopSendingReceived
+from aioquic.quic.events import (
+    QuicEvent,
+    StreamDataReceived,
+    StreamReset,
+    ConnectionTerminated,
+    StopSendingReceived,
+)
 
 from .types import Value, decode_value
 
@@ -25,13 +29,15 @@ from .types import Value, decode_value
 @dataclass
 class Savepoint:
     """Represents a transaction savepoint."""
+
     name: str
-    connection: 'Connection' = None
+    connection: Optional["Connection"] = None
 
 
 @dataclass
 class Column:
     """Represents a column in the result set."""
+
     name: str
     type: str
 
@@ -39,10 +45,11 @@ class Column:
 @dataclass
 class Page:
     """Represents a page of query results."""
+
     columns: List[Column]
     rows: List[Dict[str, Value]]
     ordered: bool = False
-    order_keys: List[str] = None
+    order_keys: Optional[List[str]] = None
     final: bool = False
 
     def __post_init__(self):
@@ -50,23 +57,209 @@ class Page:
             self.order_keys = []
 
 
+@dataclass
+class PlanOperation:
+    """Represents an operation in a query execution plan."""
+
+    operation: str
+    description: str
+    estimated_rows: int = 0
+    estimated_cost: float = 0.0
+    children: List["PlanOperation"] = None
+
+    def __post_init__(self):
+        if self.children is None:
+            self.children = []
+
+
+@dataclass
+class QueryPlan:
+    """Represents a query execution plan."""
+
+    query: str
+    root: Optional[PlanOperation] = None
+    estimated_total_cost: float = 0.0
+    planning_time_ms: float = 0.0
+
+
+@dataclass
+class QueryProfile:
+    """Represents query execution profiling information."""
+
+    query: str
+    execution_time_ms: float = 0.0
+    planning_time_ms: float = 0.0
+    rows_returned: int = 0
+    rows_scanned: int = 0
+    operations: List[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        if self.operations is None:
+            self.operations = []
+
+
+@dataclass
+class BatchResult:
+    """Represents the result of a single query in a batch."""
+
+    index: int
+    success: bool
+    page: Optional[Page] = None
+    error: Optional[str] = None
+
+
+class PreparedStatement:
+    """
+    A prepared statement with parameter placeholders.
+
+    Prepared statements allow you to parse a query once and execute it
+    multiple times with different parameters. This can improve performance
+    when executing the same query pattern repeatedly.
+
+    Example:
+        stmt = await conn.prepare("MATCH (p:Person {name: $name}) RETURN p.age")
+        result1 = await stmt.execute({"name": "Alice"})
+        result2 = await stmt.execute({"name": "Bob"})
+        await stmt.close()
+    """
+
+    def __init__(
+        self,
+        connection: "Connection",
+        query: str,
+        statement_id: str,
+        parameters: List[str],
+    ):
+        """
+        Initialize a prepared statement.
+
+        Args:
+            connection: The connection this statement belongs to
+            query: The original query text
+            statement_id: Server-assigned statement ID
+            parameters: List of parameter names found in the query
+        """
+        self._connection = connection
+        self._query = query
+        self._statement_id = statement_id
+        self._parameters = parameters
+        self._closed = False
+
+    @property
+    def query(self) -> str:
+        """Get the original query text."""
+        return self._query
+
+    @property
+    def statement_id(self) -> str:
+        """Get the server-assigned statement ID."""
+        return self._statement_id
+
+    @property
+    def parameters(self) -> List[str]:
+        """Get the list of parameter names."""
+        return self._parameters.copy()
+
+    @property
+    def closed(self) -> bool:
+        """Check if the statement is closed."""
+        return self._closed
+
+    async def execute(
+        self,
+        params: Optional[Dict[str, Any]] = None,
+        page_size: Optional[int] = None,
+    ) -> Tuple[Page, Callable[[], AsyncIterator[Page]]]:
+        """
+        Execute the prepared statement with the given parameters.
+
+        Args:
+            params: Parameter values (keys must match parameter names)
+            page_size: Page size for results
+
+        Returns:
+            Tuple of (first_page, pager_function)
+
+        Raises:
+            GeodeError: If the statement is closed
+            QueryError: If execution fails
+        """
+        if self._closed:
+            raise GeodeError("Statement is closed")
+
+        # For now, just execute the query directly with parameters
+        # A full implementation would use the server's prepared statement feature
+        return await self._connection.query(self._query, params, page_size)
+
+    async def close(self) -> None:
+        """Close the prepared statement and release server resources."""
+        if self._closed:
+            return
+        self._closed = True
+        # In a full implementation, we would send a CLOSE_STATEMENT message
+        # For now, this is a no-op since we're executing queries directly
+
+    async def __aenter__(self) -> "PreparedStatement":
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
+
+    @staticmethod
+    def extract_parameters(query: str) -> List[str]:
+        """
+        Extract parameter names from a query string.
+
+        Parameters are identified by $ followed by an identifier.
+
+        Args:
+            query: The query text
+
+        Returns:
+            List of unique parameter names (without $)
+
+        Example:
+            >>> PreparedStatement.extract_parameters("MATCH (n {id: $id, name: $name}) RETURN n")
+            ['id', 'name']
+        """
+        import re
+
+        # Match $identifier patterns
+        pattern = r"\$([a-zA-Z_][a-zA-Z0-9_]*)"
+        matches = re.findall(pattern, query)
+        # Return unique parameters preserving order
+        seen = set()
+        result = []
+        for param in matches:
+            if param not in seen:
+                seen.add(param)
+                result.append(param)
+        return result
+
+
 class GeodeError(Exception):
     """Base exception for Geode client errors."""
+
     pass
 
 
 class GeodeConnectionError(GeodeError):
     """Raised when connection fails."""
+
     pass
 
 
 class QueryError(GeodeError):
     """Raised when query execution fails."""
+
     pass
 
 
 class AuthError(GeodeError):
     """Raised when authentication fails."""
+
     pass
 
 
@@ -105,7 +298,7 @@ class StreamReader:
 class StreamWriter:
     """Async stream writer that wraps the protocol's write method."""
 
-    def __init__(self, protocol: 'GeodeProtocol', stream_id: int):
+    def __init__(self, protocol: "GeodeProtocol", stream_id: int):
         self._protocol = protocol
         self._stream_id = stream_id
 
@@ -140,21 +333,32 @@ class GeodeProtocol(QuicConnectionProtocol):
         # because we use Queue instead of StreamReader
         if isinstance(event, StreamDataReceived):
             stream_id = event.stream_id
-            print(f"[DEBUG-QUIC] StreamDataReceived: stream_id={stream_id}, data_len={len(event.data)}, end_stream={event.end_stream}", file=sys.stderr)
+            print(
+                f"[DEBUG-QUIC] StreamDataReceived: stream_id={stream_id}, data_len={len(event.data)}, end_stream={event.end_stream}",
+                file=sys.stderr,
+            )
 
             # Create queue if not exists
             if stream_id not in self._stream_readers:
-                print(f"[DEBUG-QUIC] Creating new queue for stream {stream_id}", file=sys.stderr)
+                print(
+                    f"[DEBUG-QUIC] Creating new queue for stream {stream_id}",
+                    file=sys.stderr,
+                )
                 self._stream_readers[stream_id] = asyncio.Queue()
 
             # Put data in queue
             if event.data:
-                print(f"[DEBUG-QUIC] Putting {len(event.data)} bytes into queue for stream {stream_id}", file=sys.stderr)
+                print(
+                    f"[DEBUG-QUIC] Putting {len(event.data)} bytes into queue for stream {stream_id}",
+                    file=sys.stderr,
+                )
                 self._stream_readers[stream_id].put_nowait(event.data)
 
             # Mark end of stream
             if event.end_stream:
-                print(f"[DEBUG-QUIC] Marking end of stream {stream_id}", file=sys.stderr)
+                print(
+                    f"[DEBUG-QUIC] Marking end of stream {stream_id}", file=sys.stderr
+                )
                 self._stream_readers[stream_id].put_nowait(None)
         elif isinstance(event, StreamReset):
             # Handle stream reset - mark stream as ended
@@ -166,7 +370,7 @@ class GeodeProtocol(QuicConnectionProtocol):
             for queue in self._stream_readers.values():
                 try:
                     queue.put_nowait(None)
-                except:
+                except asyncio.QueueFull:
                     pass
             # Don't call super() for these events - they expect StreamReader with feed_eof()
         else:
@@ -186,7 +390,7 @@ class GeodeProtocol(QuicConnectionProtocol):
         print(f"[DEBUG] Created stream ID: {stream_id}", file=sys.stderr)
         return stream_id, reader_queue
 
-    async def create_stream(self) -> Tuple['StreamReader', 'StreamWriter']:
+    async def create_stream(self) -> Tuple["StreamReader", "StreamWriter"]:
         """
         Create a bidirectional stream and return reader/writer objects.
 
@@ -198,9 +402,13 @@ class GeodeProtocol(QuicConnectionProtocol):
         writer = StreamWriter(self, stream_id)
         return reader, writer
 
-    def write_to_stream(self, stream_id: int, data: bytes, end_stream: bool = False) -> None:
+    def write_to_stream(
+        self, stream_id: int, data: bytes, end_stream: bool = False
+    ) -> None:
         """Write data to a stream."""
-        print(f"[DEBUG] Writing {len(data)} bytes to stream {stream_id}", file=sys.stderr)
+        print(
+            f"[DEBUG] Writing {len(data)} bytes to stream {stream_id}", file=sys.stderr
+        )
         self._quic.send_stream_data(stream_id, data, end_stream)
         self.transmit()
         print(f"[DEBUG] Transmitted data on stream {stream_id}", file=sys.stderr)
@@ -282,7 +490,7 @@ class Connection:
         self._lock = asyncio.Lock()
         self._buffer = b""
 
-    async def __aenter__(self) -> 'Connection':
+    async def __aenter__(self) -> "Connection":
         """Async context manager entry."""
         await self.connect()
         return self
@@ -293,7 +501,10 @@ class Connection:
 
     async def connect(self) -> None:
         """Establish QUIC connection to Geode server."""
-        print(f"[DEBUG] connect() called, already connected: {self._connected}", file=sys.stderr)
+        print(
+            f"[DEBUG] connect() called, already connected: {self._connected}",
+            file=sys.stderr,
+        )
         if self._connected:
             return
 
@@ -307,7 +518,9 @@ class Connection:
         # Configure TLS
         if self.skip_verify:
             # Skip certificate verification (match vendor client pattern)
-            print("[DEBUG] Skipping TLS verification (skip_verify=True)", file=sys.stderr)
+            print(
+                "[DEBUG] Skipping TLS verification (skip_verify=True)", file=sys.stderr
+            )
             configuration.verify_mode = 0  # Same as ssl.CERT_NONE
             # DON'T set server_name when skipping verification - this causes cert issues
         else:
@@ -320,19 +533,29 @@ class Connection:
 
             # If no custom CA specified, try the test harness CA
             if not ca_cert_path:
-                test_harness_ca = os.path.join(os.path.dirname(__file__), '../../test-harness/certs/ca.crt')
+                test_harness_ca = os.path.join(
+                    os.path.dirname(__file__), "../../test-harness/certs/ca.crt"
+                )
                 if os.path.exists(test_harness_ca):
                     ca_cert_path = test_harness_ca
-                    print(f"[DEBUG] Using test harness CA: {test_harness_ca}", file=sys.stderr)
+                    print(
+                        f"[DEBUG] Using test harness CA: {test_harness_ca}",
+                        file=sys.stderr,
+                    )
 
             if ca_cert_path and os.path.exists(ca_cert_path):
-                print(f"[DEBUG] Loading CA certificate: {ca_cert_path}", file=sys.stderr)
+                print(
+                    f"[DEBUG] Loading CA certificate: {ca_cert_path}", file=sys.stderr
+                )
                 configuration.load_verify_locations(ca_cert_path)
             else:
-                print("[DEBUG] WARNING: No CA certificate found and skip_verify=False", file=sys.stderr)
+                print(
+                    "[DEBUG] WARNING: No CA certificate found and skip_verify=False",
+                    file=sys.stderr,
+                )
 
         if self.client_cert and self.client_key:
-            print(f"[DEBUG] Loading client certificate", file=sys.stderr)
+            print("[DEBUG] Loading client certificate", file=sys.stderr)
             configuration.load_cert_chain(self.client_cert, self.client_key)
 
         # Connect using async with pattern (proper context manager usage)
@@ -353,8 +576,12 @@ class Connection:
             print("[DEBUG] QUIC handshake complete", file=sys.stderr)
 
         except Exception as e:
-            print(f"[DEBUG] QUIC connection failed: {type(e).__name__}: {e}", file=sys.stderr)
+            print(
+                f"[DEBUG] QUIC connection failed: {type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
             import traceback
+
             traceback.print_exc()
             raise GeodeConnectionError(f"Failed to establish QUIC connection: {e}")
 
@@ -362,7 +589,7 @@ class Connection:
         try:
             print("[DEBUG] Creating bidirectional stream...", file=sys.stderr)
             self._reader, self._writer = await self._protocol.create_stream()
-            print(f"[DEBUG] Created bidirectional stream", file=sys.stderr)
+            print("[DEBUG] Created bidirectional stream", file=sys.stderr)
         except Exception as e:
             print(f"[DEBUG] Stream creation failed: {e}", file=sys.stderr)
             raise GeodeConnectionError(f"Failed to create stream: {e}")
@@ -413,7 +640,7 @@ class Connection:
             newline_idx = self._buffer.find(b"\n")
             if newline_idx != -1:
                 line = self._buffer[:newline_idx]
-                self._buffer = self._buffer[newline_idx + 1:]
+                self._buffer = self._buffer[newline_idx + 1 :]
                 return line
 
             # Read more data
@@ -453,7 +680,7 @@ class Connection:
             await self._write_json({"type": "ROLLBACK"})
             await self._read_json()
 
-    async def savepoint(self, name: str) -> 'Savepoint':
+    async def savepoint(self, name: str) -> "Savepoint":
         """
         Create a savepoint within the current transaction.
 
@@ -476,7 +703,7 @@ class Connection:
             await self._read_json()
         return Savepoint(name=name, connection=self)
 
-    async def rollback_to(self, savepoint: 'Savepoint') -> None:
+    async def rollback_to(self, savepoint: "Savepoint") -> None:
         """
         Rollback to a savepoint.
 
@@ -545,11 +772,13 @@ class Connection:
             type_map = {col.name: col.type for col in columns}
 
             # Send PULL to get first page
-            await self._write_json({
-                "type": "PULL",
-                "request_id": 1,
-                "page_size": page_size,
-            })
+            await self._write_json(
+                {
+                    "type": "PULL",
+                    "request_id": 1,
+                    "page_size": page_size,
+                }
+            )
 
             bindings_frame = await self._read_json()
             bindings_result = bindings_frame.get("result", {})
@@ -562,6 +791,7 @@ class Connection:
                     ordered=False,
                     final=True,
                 )
+
                 async def empty_pager():
                     return
                     yield  # Make it a generator
@@ -577,6 +807,7 @@ class Connection:
                     order_keys=bindings_result.get("order_keys", []),
                     final=True,  # RESULT means all data is here
                 )
+
                 async def empty_pager():
                     if False:
                         yield  # Make it a generator but never yield
@@ -584,7 +815,9 @@ class Connection:
                 return first_page, empty_pager
 
             if bindings_result.get("type") != "BINDINGS":
-                raise QueryError(f"Unexpected frame type: {bindings_result.get('type')}")
+                raise QueryError(
+                    f"Unexpected frame type: {bindings_result.get('type')}"
+                )
 
             # Parse first page
             rows = self._parse_rows(bindings_result.get("rows", []), type_map)
@@ -598,9 +831,11 @@ class Connection:
 
             # If all results are in the first page, don't create a pager
             if first_page.final:
+
                 async def empty_pager():
                     if False:
                         yield  # Make it a generator but never yield anything
+
                 return first_page, empty_pager
 
             # Create pager function for multi-page results
@@ -608,11 +843,13 @@ class Connection:
                 nonlocal first_page
                 while not first_page.final:
                     async with self._lock:
-                        await self._write_json({
-                            "type": "PULL",
-                            "request_id": 1,
-                            "page_size": page_size,
-                        })
+                        await self._write_json(
+                            {
+                                "type": "PULL",
+                                "request_id": 1,
+                                "page_size": page_size,
+                            }
+                        )
                         frame = await self._read_json()
                         result = frame.get("result", {})
 
@@ -665,6 +902,216 @@ class Connection:
         """
         page, _ = await self.query(text, params, page_size=0)
 
+    async def prepare(self, query: str) -> PreparedStatement:
+        """
+        Prepare a statement for repeated execution.
+
+        Prepared statements parse the query once and can be executed
+        multiple times with different parameters.
+
+        Args:
+            query: The GQL query text with parameter placeholders ($name)
+
+        Returns:
+            PreparedStatement that can be executed multiple times
+
+        Example:
+            stmt = await conn.prepare("MATCH (p:Person {name: $name}) RETURN p")
+            async with stmt:
+                page, _ = await stmt.execute({"name": "Alice"})
+                page2, _ = await stmt.execute({"name": "Bob"})
+        """
+        # Extract parameters from query
+        parameters = PreparedStatement.extract_parameters(query)
+
+        # Generate a statement ID (in a full implementation, this would come from server)
+        import uuid
+
+        statement_id = str(uuid.uuid4())
+
+        return PreparedStatement(
+            connection=self,
+            query=query,
+            statement_id=statement_id,
+            parameters=parameters,
+        )
+
+    async def explain(
+        self, query: str, params: Optional[Dict[str, Any]] = None
+    ) -> QueryPlan:
+        """
+        Get the execution plan for a query without executing it.
+
+        Args:
+            query: The GQL query text
+            params: Optional query parameters
+
+        Returns:
+            QueryPlan with estimated costs and operations
+
+        Example:
+            plan = await conn.explain("MATCH (n:Person) RETURN n")
+            print(f"Estimated cost: {plan.estimated_total_cost}")
+        """
+        async with self._lock:
+            # Send EXPLAIN message
+            explain_msg = {"type": "EXPLAIN", "text": query}
+            if params:
+                explain_msg["params"] = params
+
+            await self._write_json(explain_msg)
+
+            # Read response
+            response = await self._read_json()
+            result = response.get("result", {})
+
+            if result.get("type") == "ERROR":
+                code = result.get("code", "UNKNOWN")
+                message = result.get("message", "Explain failed")
+                raise QueryError(f"{code}: {message}")
+
+            # Parse the explain result
+            plan_data = result.get("plan", {})
+
+            def parse_operation(op_data: Dict[str, Any]) -> PlanOperation:
+                children = [
+                    parse_operation(child) for child in op_data.get("children", [])
+                ]
+                return PlanOperation(
+                    operation=op_data.get("operation", "Unknown"),
+                    description=op_data.get("description", ""),
+                    estimated_rows=op_data.get("estimated_rows", 0),
+                    estimated_cost=op_data.get("estimated_cost", 0.0),
+                    children=children,
+                )
+
+            root = None
+            if plan_data:
+                root = parse_operation(plan_data)
+
+            return QueryPlan(
+                query=query,
+                root=root,
+                estimated_total_cost=result.get("estimated_total_cost", 0.0),
+                planning_time_ms=result.get("planning_time_ms", 0.0),
+            )
+
+    async def profile(
+        self,
+        query: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> QueryProfile:
+        """
+        Execute a query and return profiling information.
+
+        Unlike explain(), this actually executes the query and returns
+        real execution statistics.
+
+        Args:
+            query: The GQL query text
+            params: Optional query parameters
+
+        Returns:
+            QueryProfile with actual execution metrics
+
+        Example:
+            profile = await conn.profile("MATCH (n:Person) RETURN n")
+            print(f"Execution time: {profile.execution_time_ms}ms")
+            print(f"Rows scanned: {profile.rows_scanned}")
+        """
+        async with self._lock:
+            # Send PROFILE message
+            profile_msg = {"type": "PROFILE", "text": query}
+            if params:
+                profile_msg["params"] = params
+
+            await self._write_json(profile_msg)
+
+            # Read response
+            response = await self._read_json()
+            result = response.get("result", {})
+
+            if result.get("type") == "ERROR":
+                code = result.get("code", "UNKNOWN")
+                message = result.get("message", "Profile failed")
+                raise QueryError(f"{code}: {message}")
+
+            return QueryProfile(
+                query=query,
+                execution_time_ms=result.get("execution_time_ms", 0.0),
+                planning_time_ms=result.get("planning_time_ms", 0.0),
+                rows_returned=result.get("rows_returned", 0),
+                rows_scanned=result.get("rows_scanned", 0),
+                operations=result.get("operations", []),
+            )
+
+    async def batch(
+        self,
+        queries: List[Tuple[str, Optional[Dict[str, Any]]]],
+        stop_on_error: bool = True,
+    ) -> List[BatchResult]:
+        """
+        Execute multiple queries in a single batch.
+
+        This can be more efficient than executing queries one at a time
+        when you have multiple independent operations.
+
+        Args:
+            queries: List of (query_text, params) tuples
+            stop_on_error: If True, stop execution on first error
+
+        Returns:
+            List of BatchResult for each query
+
+        Example:
+            results = await conn.batch([
+                ("CREATE (p:Person {name: $name})", {"name": "Alice"}),
+                ("CREATE (p:Person {name: $name})", {"name": "Bob"}),
+                ("MATCH (n:Person) RETURN count(n)", None),
+            ])
+            for result in results:
+                if result.success:
+                    print(f"Query {result.index}: success")
+                else:
+                    print(f"Query {result.index}: {result.error}")
+        """
+        results = []
+
+        for index, (query_text, params) in enumerate(queries):
+            try:
+                page, _ = await self.query(query_text, params)
+                results.append(
+                    BatchResult(
+                        index=index,
+                        success=True,
+                        page=page,
+                        error=None,
+                    )
+                )
+            except (QueryError, GeodeError) as e:
+                results.append(
+                    BatchResult(
+                        index=index,
+                        success=False,
+                        page=None,
+                        error=str(e),
+                    )
+                )
+                if stop_on_error:
+                    # Add placeholder results for remaining queries
+                    for remaining_index in range(index + 1, len(queries)):
+                        results.append(
+                            BatchResult(
+                                index=remaining_index,
+                                success=False,
+                                page=None,
+                                error="Skipped due to previous error",
+                            )
+                        )
+                    break
+
+        return results
+
     async def close(self) -> None:
         """Close the connection."""
         if not self._connected:
@@ -683,7 +1130,7 @@ class Connection:
         self._reader = None
 
         # Exit the connection context manager
-        if hasattr(self, '_connection_cm') and self._connection_cm and self._protocol:
+        if hasattr(self, "_connection_cm") and self._connection_cm and self._protocol:
             try:
                 await self._connection_cm.__aexit__(None, None, None)
             except Exception:
@@ -700,12 +1147,7 @@ class Client:
     Use this to create connections to Geode server.
     """
 
-    def __init__(
-        self,
-        host: str = "127.0.0.1",
-        port: int = 3141,
-        **kwargs
-    ):
+    def __init__(self, host: str = "127.0.0.1", port: int = 3141, **kwargs):
         """
         Initialize client.
 
@@ -716,14 +1158,10 @@ class Client:
         """
         self.host = host
         self.port = port
-        self.config = {
-            "host": host,
-            "port": port,
-            **kwargs
-        }
+        self.config = {"host": host, "port": port, **kwargs}
 
     @classmethod
-    def from_url(cls, url: str) -> 'Client':
+    def from_url(cls, url: str) -> "Client":
         """
         Create client from URL.
 
@@ -761,7 +1199,10 @@ class Client:
             if "client_key" in params:
                 config["client_key"] = params["client_key"][0]
             if "skip_verify" in params:
-                config["skip_verify"] = params["skip_verify"][0].lower() in ("1", "true")
+                config["skip_verify"] = params["skip_verify"][0].lower() in (
+                    "1",
+                    "true",
+                )
             if "server_name" in params:
                 config["server_name"] = params["server_name"][0]
 

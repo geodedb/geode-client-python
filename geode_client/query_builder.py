@@ -3,11 +3,12 @@ Query builder for constructing GQL queries programmatically.
 """
 
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 
 class EdgeDirection(Enum):
     """Direction of an edge in a pattern."""
+
     OUTGOING = auto()
     INCOMING = auto()
     UNDIRECTED = auto()
@@ -33,82 +34,82 @@ class QueryBuilder:
         self._clauses: List[tuple[str, str]] = []
         self._params: Dict[str, Any] = {}
 
-    def match(self, pattern: str) -> 'QueryBuilder':
+    def match(self, pattern: str) -> "QueryBuilder":
         """Add a MATCH clause."""
         self._clauses.append(("MATCH", pattern))
         return self
 
-    def optional_match(self, pattern: str) -> 'QueryBuilder':
+    def optional_match(self, pattern: str) -> "QueryBuilder":
         """Add an OPTIONAL MATCH clause."""
         self._clauses.append(("OPTIONAL MATCH", pattern))
         return self
 
-    def where(self, condition: str) -> 'QueryBuilder':
+    def where(self, condition: str) -> "QueryBuilder":
         """Add a WHERE clause."""
         self._clauses.append(("WHERE", condition))
         return self
 
-    def with_(self, *expressions: str) -> 'QueryBuilder':
+    def with_(self, *expressions: str) -> "QueryBuilder":
         """Add a WITH clause."""
         self._clauses.append(("WITH", ", ".join(expressions)))
         return self
 
-    def return_(self, *expressions: str) -> 'QueryBuilder':
+    def return_(self, *expressions: str) -> "QueryBuilder":
         """Add a RETURN clause."""
         self._clauses.append(("RETURN", ", ".join(expressions)))
         return self
 
-    def order_by(self, *expressions: str) -> 'QueryBuilder':
+    def order_by(self, *expressions: str) -> "QueryBuilder":
         """Add an ORDER BY clause."""
         self._clauses.append(("ORDER BY", ", ".join(expressions)))
         return self
 
-    def limit(self, n: int) -> 'QueryBuilder':
+    def limit(self, n: int) -> "QueryBuilder":
         """Add a LIMIT clause."""
         self._clauses.append(("LIMIT", str(n)))
         return self
 
-    def offset(self, n: int) -> 'QueryBuilder':
+    def offset(self, n: int) -> "QueryBuilder":
         """Add an OFFSET clause."""
         self._clauses.append(("OFFSET", str(n)))
         return self
 
-    def create(self, pattern: str) -> 'QueryBuilder':
+    def create(self, pattern: str) -> "QueryBuilder":
         """Add a CREATE clause."""
         self._clauses.append(("CREATE", pattern))
         return self
 
-    def merge(self, pattern: str) -> 'QueryBuilder':
+    def merge(self, pattern: str) -> "QueryBuilder":
         """Add a MERGE clause."""
         self._clauses.append(("MERGE", pattern))
         return self
 
-    def set_(self, *assignments: str) -> 'QueryBuilder':
+    def set_(self, *assignments: str) -> "QueryBuilder":
         """Add a SET clause."""
         self._clauses.append(("SET", ", ".join(assignments)))
         return self
 
-    def delete(self, *variables: str) -> 'QueryBuilder':
+    def delete(self, *variables: str) -> "QueryBuilder":
         """Add a DELETE clause."""
         self._clauses.append(("DELETE", ", ".join(variables)))
         return self
 
-    def union(self) -> 'QueryBuilder':
+    def union(self) -> "QueryBuilder":
         """Add a UNION clause."""
         self._clauses.append(("UNION", ""))
         return self
 
-    def group_by(self, *expressions: str) -> 'QueryBuilder':
+    def group_by(self, *expressions: str) -> "QueryBuilder":
         """Add a GROUP BY clause."""
         self._clauses.append(("GROUP BY", ", ".join(expressions)))
         return self
 
-    def with_param(self, name: str, value: Any) -> 'QueryBuilder':
+    def with_param(self, name: str, value: Any) -> "QueryBuilder":
         """Add a query parameter."""
         self._params[name] = value
         return self
 
-    def with_params(self, params: Dict[str, Any]) -> 'QueryBuilder':
+    def with_params(self, params: Dict[str, Any]) -> "QueryBuilder":
         """Add multiple query parameters."""
         self._params.update(params)
         return self
@@ -152,7 +153,7 @@ class PatternBuilder:
         variable: str = "",
         label: str = "",
         properties: Optional[Dict[str, Any]] = None,
-    ) -> 'PatternBuilder':
+    ) -> "PatternBuilder":
         """Add a node pattern."""
         pattern = "("
 
@@ -178,7 +179,7 @@ class PatternBuilder:
         edge_type: str = "",
         direction: EdgeDirection = EdgeDirection.OUTGOING,
         properties: Optional[Dict[str, Any]] = None,
-    ) -> 'PatternBuilder':
+    ) -> "PatternBuilder":
         """Add an edge pattern."""
         pattern = ""
 
@@ -215,7 +216,7 @@ class PatternBuilder:
         self._elements.append(pattern)
         return self
 
-    def variable_length(self, min_hops: int = 0, max_hops: int = 0) -> 'PatternBuilder':
+    def variable_length(self, min_hops: int = 0, max_hops: int = 0) -> "PatternBuilder":
         """Add variable length to the last edge."""
         if self._elements:
             edge = self._elements[-1]
@@ -269,53 +270,53 @@ class PredicateBuilder:
     def __init__(self):
         self._conditions: List[str] = []
 
-    def equals(self, left: str, right: str) -> 'PredicateBuilder':
+    def equals(self, left: str, right: str) -> "PredicateBuilder":
         """Add an equality condition."""
         self._conditions.append(f"{left} = {right}")
         return self
 
-    def not_equals(self, left: str, right: str) -> 'PredicateBuilder':
+    def not_equals(self, left: str, right: str) -> "PredicateBuilder":
         """Add an inequality condition."""
         self._conditions.append(f"{left} <> {right}")
         return self
 
-    def greater_than(self, left: str, right: str) -> 'PredicateBuilder':
+    def greater_than(self, left: str, right: str) -> "PredicateBuilder":
         """Add a greater than condition."""
         self._conditions.append(f"{left} > {right}")
         return self
 
-    def less_than(self, left: str, right: str) -> 'PredicateBuilder':
+    def less_than(self, left: str, right: str) -> "PredicateBuilder":
         """Add a less than condition."""
         self._conditions.append(f"{left} < {right}")
         return self
 
-    def greater_equal(self, left: str, right: str) -> 'PredicateBuilder':
+    def greater_equal(self, left: str, right: str) -> "PredicateBuilder":
         """Add a greater than or equal condition."""
         self._conditions.append(f"{left} >= {right}")
         return self
 
-    def less_equal(self, left: str, right: str) -> 'PredicateBuilder':
+    def less_equal(self, left: str, right: str) -> "PredicateBuilder":
         """Add a less than or equal condition."""
         self._conditions.append(f"{left} <= {right}")
         return self
 
-    def in_(self, expr: str, values: List[Any]) -> 'PredicateBuilder':
+    def in_(self, expr: str, values: List[Any]) -> "PredicateBuilder":
         """Add an IN condition."""
         formatted = [PatternBuilder._format_value(v) for v in values]
         self._conditions.append(f"{expr} IN [{', '.join(formatted)}]")
         return self
 
-    def is_null(self, expr: str) -> 'PredicateBuilder':
+    def is_null(self, expr: str) -> "PredicateBuilder":
         """Add an IS NULL condition."""
         self._conditions.append(f"{expr} IS NULL")
         return self
 
-    def is_not_null(self, expr: str) -> 'PredicateBuilder':
+    def is_not_null(self, expr: str) -> "PredicateBuilder":
         """Add an IS NOT NULL condition."""
         self._conditions.append(f"{expr} IS NOT NULL")
         return self
 
-    def exists(self, pattern: str) -> 'PredicateBuilder':
+    def exists(self, pattern: str) -> "PredicateBuilder":
         """Add an EXISTS condition."""
         self._conditions.append(f"EXISTS {{ {pattern} }}")
         return self
@@ -330,6 +331,7 @@ class PredicateBuilder:
 
 
 # Convenience functions for common queries
+
 
 def find_friends(person_name: str, limit: int = 10) -> tuple[str, Dict[str, Any]]:
     """

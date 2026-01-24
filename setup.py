@@ -41,9 +41,24 @@ setup(
         "dev": [
             "pytest>=7.0.0",
             "pytest-asyncio>=0.21.0",
+            "pytest-cov>=4.0.0",
+            "pytest-benchmark>=4.0.0",
+            "hypothesis>=6.0.0",
             "black>=23.0.0",
             "mypy>=1.0.0",
             "ruff>=0.1.0",
+        ],
+        "integration": [
+            "pytest>=7.0.0",
+            "pytest-asyncio>=0.21.0",
+        ],
+        "benchmark": [
+            "pytest>=7.0.0",
+            "pytest-benchmark>=4.0.0",
+        ],
+        "property": [
+            "pytest>=7.0.0",
+            "hypothesis>=6.0.0",
         ],
     },
     entry_points={
