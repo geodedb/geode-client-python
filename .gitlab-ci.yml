@@ -30,8 +30,8 @@ include:
       pytest_args: "-v --tb=short"
       coverage: false
 
-  # Coverage reports
-  - component: gitlab.com/devnw/ci-catalog/python-coverage@latest
+  # Coverage reports (using @main until released)
+  - component: gitlab.com/devnw/ci-catalog/python-coverage@main
     inputs:
       stage: coverage
       python_version: "3.12"
@@ -40,13 +40,12 @@ include:
       coverage_threshold: "80"
       output_dir: "coverage"
 
-  # Benchmarks
-  - component: gitlab.com/devnw/ci-catalog/python-benchmark@latest
+  # Benchmarks (using @main until released)
+  - component: gitlab.com/devnw/ci-catalog/python-benchmark@main
     inputs:
       stage: benchmark
       python_version: "3.12"
       benchmark_path: "benchmarks/"
-      rules_main_only: true
 
   # Security scanning
   - component: gitlab.com/devnw/ci-catalog/security-sast@latest
