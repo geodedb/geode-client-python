@@ -56,6 +56,16 @@ include:
     inputs:
       stage: security
 
+  # Release creation
+  - component: gitlab.com/devnw/ci-catalog/release-semantic@latest
+    inputs:
+      stage: release
+
+default:
+  tags:
+    - company
+    - linux
+
 stages:
   - build
   - lint
@@ -65,6 +75,7 @@ stages:
   - coverage
   - benchmark
   - pages
+  - release
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
