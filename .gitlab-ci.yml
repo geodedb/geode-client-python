@@ -56,6 +56,19 @@ include:
     inputs:
       stage: security
 
+  - component: gitlab.com/devnw/ci-catalog/security-secrets@latest
+    inputs:
+      stage: security
+
+  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@latest
+
+  # SBOM generation and scanning
+  - component: gitlab.com/devnw/ci-catalog/sbom-generate@latest
+
+  - component: gitlab.com/devnw/ci-catalog/sbom-scan@latest
+    inputs:
+      allow_failure: true
+
   # Release creation
   - component: gitlab.com/devnw/ci-catalog/release-semantic@latest
     inputs:
@@ -72,6 +85,7 @@ stages:
   - test
   - integration
   - security
+  - sbom
   - coverage
   - benchmark
   - pages
