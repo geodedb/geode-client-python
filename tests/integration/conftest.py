@@ -1,8 +1,10 @@
 """
 Pytest configuration and fixtures for integration tests.
 
-Uses testcontainers to manage a Geode Docker container for testing.
-The container runs Geode server with QUIC over UDP on port 3141.
+Supports two modes:
+1. External server: Set GEODE_HOST and GEODE_PORT environment variables
+   to connect to an already-running Geode server (no Docker).
+2. Docker mode: If env vars are not set, starts a Docker container.
 """
 
 import os
@@ -17,9 +19,13 @@ from geode_client import Client, ConnectionPool
 
 # Test configuration
 GEODE_IMAGE = "registry.gitlab.com/devnw/geode/geode:latest"
-GEODE_PORT = 3141
+DEFAULT_GEODE_PORT = 3141
 CONTAINER_STARTUP_TIMEOUT = 60  # seconds
 CONTAINER_NAME = "geode-python-test"
+
+# Check for external server configuration via environment variables
+_EXTERNAL_HOST = os.environ.get("GEODE_HOST")
+_EXTERNAL_PORT = os.environ.get("GEODE_PORT")
 
 
 def _find_available_port() -> int:
@@ -74,7 +80,7 @@ class GeodeContainer:
     testcontainers, which has better support for TCP.
     """
 
-    def __init__(self, image: str = GEODE_IMAGE, port: int = GEODE_PORT):
+    def __init__(self, image: str = GEODE_IMAGE, port: int = DEFAULT_GEODE_PORT):
         self.image = image
         self.container_port = port
         self.host_port: Optional[int] = None
@@ -153,6 +159,11 @@ class GeodeContainer:
 _container: Optional[GeodeContainer] = None
 
 
+def _using_external_server() -> bool:
+    """Check if we're configured to use an external server."""
+    return _EXTERNAL_HOST is not None and _EXTERNAL_PORT is not None
+
+
 def _get_or_create_container() -> GeodeContainer:
     """Get existing container or create new one."""
     global _container
@@ -163,26 +174,36 @@ def _get_or_create_container() -> GeodeContainer:
 
 
 @pytest.fixture(scope="session")
-def geode_container() -> Generator[GeodeContainer, None, None]:
+def geode_container() -> Generator[Optional[GeodeContainer], None, None]:
     """
     Session-scoped fixture that provides a running Geode container.
 
-    The container is shared across all tests to minimize startup overhead.
+    If GEODE_HOST and GEODE_PORT environment variables are set,
+    no container is started (uses external server).
+    Otherwise, starts a Docker container.
     """
-    container = _get_or_create_container()
-    yield container
-    # Don't stop here - let atexit handle it for test re-runs
+    if _using_external_server():
+        # Using external server, no container needed
+        yield None
+    else:
+        container = _get_or_create_container()
+        yield container
+        # Don't stop here - let atexit handle it for test re-runs
 
 
 @pytest.fixture(scope="session")
-def geode_host(geode_container: GeodeContainer) -> str:
+def geode_host(geode_container: Optional[GeodeContainer]) -> str:
     """Get the Geode server host."""
+    if _using_external_server():
+        return _EXTERNAL_HOST
     return geode_container.get_host()
 
 
 @pytest.fixture(scope="session")
-def geode_port(geode_container: GeodeContainer) -> int:
+def geode_port(geode_container: Optional[GeodeContainer]) -> int:
     """Get the Geode server port."""
+    if _using_external_server():
+        return int(_EXTERNAL_PORT)
     return geode_container.get_port()
 
 
@@ -234,9 +255,9 @@ import atexit
 
 @atexit.register
 def _cleanup_on_exit():
-    """Clean up container when Python exits."""
+    """Clean up container when Python exits (only if we started one)."""
     global _container
-    if _container is not None:
+    if _container is not None and not _using_external_server():
         _container.stop()
         _container = None
 
@@ -246,7 +267,7 @@ def pytest_configure(config):
     """Register integration marker."""
     config.addinivalue_line(
         "markers",
-        "integration: mark test as integration test (requires Docker)"
+        "integration: mark test as integration test (requires Geode server or Docker)"
     )
 
 
