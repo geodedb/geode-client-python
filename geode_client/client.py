@@ -499,6 +499,7 @@ class Connection:
         """Async context manager exit."""
         await self.close()
 
+    # CANARY: REQ=REQ-CLIENT-PY-001; FEATURE="PythonClientConnection"; ASPECT=HelloHandshake; STATUS=IMPL; OWNER=clients; UPDATED=2025-02-14
     async def connect(self) -> None:
         """Establish QUIC connection to Geode server."""
         print(
