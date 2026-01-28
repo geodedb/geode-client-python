@@ -1,10 +1,11 @@
 """Unit tests for Geode type system."""
 
-import pytest
-from datetime import datetime, date, time
+from datetime import date, datetime
 from decimal import Decimal
 
-from geode_client import Value, ValueKind, Range
+import pytest
+
+from geode_client import Range, Value, ValueKind
 from geode_client.types import decode_value
 
 
@@ -14,11 +15,29 @@ class TestValueKind:
     def test_all_kinds_exist(self):
         """Test that all expected ValueKind variants exist."""
         expected_kinds = [
-            "NULL", "INT", "BOOL", "STRING", "DECIMAL",
-            "ARRAY", "OBJECT", "BYTEA",
-            "DATE", "TIME", "TIMETZ", "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL",
-            "JSON", "JSONB", "XML", "URL", "DOMAIN", "UUID", "ENUM",
-            "BIT_STRING", "RANGE"
+            "NULL",
+            "INT",
+            "BOOL",
+            "STRING",
+            "DECIMAL",
+            "ARRAY",
+            "OBJECT",
+            "BYTEA",
+            "DATE",
+            "TIME",
+            "TIMETZ",
+            "TIMESTAMP",
+            "TIMESTAMPTZ",
+            "INTERVAL",
+            "JSON",
+            "JSONB",
+            "XML",
+            "URL",
+            "DOMAIN",
+            "UUID",
+            "ENUM",
+            "BIT_STRING",
+            "RANGE",
         ]
         for kind_name in expected_kinds:
             assert hasattr(ValueKind, kind_name), f"Missing ValueKind.{kind_name}"
@@ -102,7 +121,10 @@ class TestValueConstruction:
 
     def test_decimal_precision(self):
         """Test DECIMAL preserves precision."""
-        val = Value(kind=ValueKind.DECIMAL, decimal_value=Decimal("0.123456789012345678901234567890"))
+        val = Value(
+            kind=ValueKind.DECIMAL,
+            decimal_value=Decimal("0.123456789012345678901234567890"),
+        )
         assert str(val.decimal_value) == "0.123456789012345678901234567890"
 
     def test_array_value(self):
@@ -171,7 +193,7 @@ class TestValueConstruction:
         r = Range(
             lower=Value(kind=ValueKind.INT, int_value=1),
             upper=Value(kind=ValueKind.INT, int_value=10),
-            bounds="[)"
+            bounds="[)",
         )
         val = Value(kind=ValueKind.RANGE, range_value=r)
         assert val.kind == ValueKind.RANGE
@@ -555,11 +577,7 @@ class TestDecodeValue:
 
     def test_decode_range_dict(self):
         """Test decoding RANGE from dict."""
-        val = decode_value({
-            "lower": 1,
-            "upper": 10,
-            "bounds": "[)"
-        }, "RANGE")
+        val = decode_value({"lower": 1, "upper": 10, "bounds": "[)"}, "RANGE")
         assert val.kind == ValueKind.RANGE
         assert val.range_value.bounds == "[)"
         assert val.range_value.lower.int_value == 1
@@ -673,7 +691,7 @@ class TestRange:
         r = Range(
             lower=Value(kind=ValueKind.INT, int_value=1),
             upper=Value(kind=ValueKind.INT, int_value=10),
-            bounds="[)"
+            bounds="[)",
         )
         assert r.lower.int_value == 1
         assert r.upper.int_value == 10
@@ -681,19 +699,13 @@ class TestRange:
 
     def test_range_unbounded_lower(self):
         """Test Range with unbounded lower."""
-        r = Range(
-            upper=Value(kind=ValueKind.INT, int_value=10),
-            bounds="()"
-        )
+        r = Range(upper=Value(kind=ValueKind.INT, int_value=10), bounds="()")
         assert r.lower is None
         assert r.upper.int_value == 10
 
     def test_range_unbounded_upper(self):
         """Test Range with unbounded upper."""
-        r = Range(
-            lower=Value(kind=ValueKind.INT, int_value=1),
-            bounds="[)"
-        )
+        r = Range(lower=Value(kind=ValueKind.INT, int_value=1), bounds="[)")
         assert r.lower.int_value == 1
         assert r.upper is None
 
@@ -703,31 +715,35 @@ class TestNestedValues:
 
     def test_nested_array(self):
         """Test nested arrays."""
-        inner = Value(kind=ValueKind.ARRAY, array_value=[
-            Value(kind=ValueKind.INT, int_value=1),
-            Value(kind=ValueKind.INT, int_value=2),
-        ])
+        inner = Value(
+            kind=ValueKind.ARRAY,
+            array_value=[
+                Value(kind=ValueKind.INT, int_value=1),
+                Value(kind=ValueKind.INT, int_value=2),
+            ],
+        )
         outer = Value(kind=ValueKind.ARRAY, array_value=[inner])
         assert outer.array_value[0].array_value[0].int_value == 1
 
     def test_nested_object(self):
         """Test nested objects."""
-        inner = Value(kind=ValueKind.OBJECT, object_value={
-            "x": Value(kind=ValueKind.INT, int_value=10)
-        })
-        outer = Value(kind=ValueKind.OBJECT, object_value={
-            "nested": inner
-        })
+        inner = Value(
+            kind=ValueKind.OBJECT,
+            object_value={"x": Value(kind=ValueKind.INT, int_value=10)},
+        )
+        outer = Value(kind=ValueKind.OBJECT, object_value={"nested": inner})
         assert outer.object_value["nested"].object_value["x"].int_value == 10
 
     def test_array_of_objects(self):
         """Test array of objects."""
-        obj1 = Value(kind=ValueKind.OBJECT, object_value={
-            "name": Value(kind=ValueKind.STRING, str_value="Alice")
-        })
-        obj2 = Value(kind=ValueKind.OBJECT, object_value={
-            "name": Value(kind=ValueKind.STRING, str_value="Bob")
-        })
+        obj1 = Value(
+            kind=ValueKind.OBJECT,
+            object_value={"name": Value(kind=ValueKind.STRING, str_value="Alice")},
+        )
+        obj2 = Value(
+            kind=ValueKind.OBJECT,
+            object_value={"name": Value(kind=ValueKind.STRING, str_value="Bob")},
+        )
         arr = Value(kind=ValueKind.ARRAY, array_value=[obj1, obj2])
         assert arr.array_value[0].object_value["name"].str_value == "Alice"
         assert arr.array_value[1].object_value["name"].str_value == "Bob"
@@ -739,7 +755,7 @@ class TestNestedValues:
                 {"name": "Alice", "age": 30},
                 {"name": "Bob", "age": 25},
             ],
-            "count": 2
+            "count": 2,
         }
         val = decode_value(raw, "")
         assert val.kind == ValueKind.OBJECT

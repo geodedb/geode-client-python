@@ -13,7 +13,6 @@ Tests cover:
 """
 
 import pytest
-from decimal import Decimal
 
 
 @pytest.mark.asyncio
@@ -54,6 +53,7 @@ async def test_coalesce_null(client):
 
 
 # Integer tests
+
 
 @pytest.mark.asyncio
 async def test_integer_positive(client):
@@ -109,6 +109,7 @@ async def test_integer_arithmetic(client):
 
 # Decimal tests
 
+
 @pytest.mark.asyncio
 async def test_decimal_simple(client):
     """Test simple decimal value."""
@@ -141,6 +142,7 @@ async def test_decimal_negative(client):
 
 
 # String tests
+
 
 @pytest.mark.asyncio
 async def test_string_simple(client):
@@ -191,6 +193,7 @@ async def test_string_size(client):
 
 
 # Boolean tests
+
 
 @pytest.mark.asyncio
 async def test_boolean_true(client):
@@ -253,6 +256,7 @@ async def test_boolean_or(client):
 
 
 # Array tests
+
 
 @pytest.mark.asyncio
 async def test_array_integers(client):
@@ -329,6 +333,7 @@ async def test_array_access(client):
 
 # Object/Map tests
 
+
 @pytest.mark.asyncio
 async def test_object_simple(client):
     """Test simple object/map."""
@@ -396,6 +401,7 @@ async def test_object_property_access(client):
 
 # Comparison tests
 
+
 @pytest.mark.asyncio
 async def test_comparison_operators(client):
     """Test comparison operators."""
@@ -434,10 +440,12 @@ async def test_string_comparison(client):
 
 # Type coercion tests
 
+
 @pytest.mark.asyncio
 async def test_type_in_node_property(client):
     """Test various types as node properties."""
     import uuid
+
     uid = str(uuid.uuid4())[:8]
 
     async with client.connection() as conn:

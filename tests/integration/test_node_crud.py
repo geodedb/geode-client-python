@@ -9,8 +9,9 @@ Tests cover:
 - Nodes with labels
 """
 
-import pytest
 import uuid
+
+import pytest
 
 
 def unique_id() -> str:

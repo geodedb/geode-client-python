@@ -2,8 +2,9 @@
 Setup script for Geode Python client.
 """
 
-from setuptools import setup, find_packages
 from pathlib import Path
+
+from setuptools import find_packages, setup
 
 # Read README
 readme_path = Path(__file__).parent / "README.md"
@@ -47,6 +48,8 @@ setup(
             "black>=23.0.0",
             "mypy>=1.0.0",
             "ruff>=0.1.0",
+            "pre-commit>=3.0.0",
+            "commitizen>=3.0.0",
         ],
         "integration": [
             "pytest>=7.0.0",

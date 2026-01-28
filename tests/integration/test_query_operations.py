@@ -9,8 +9,9 @@ Tests cover:
 - Aggregations: COUNT, SUM, AVG, MIN, MAX
 """
 
-import pytest
 import uuid
+
+import pytest
 
 
 def unique_id() -> str:
@@ -35,6 +36,7 @@ async def cleanup_test_data(conn, uid: str):
 
 
 # WHERE clause tests
+
 
 @pytest.mark.asyncio
 async def test_where_equals(client):
@@ -165,6 +167,7 @@ async def test_where_between(client):
 
 # ORDER BY tests
 
+
 @pytest.mark.asyncio
 async def test_order_by_asc(client):
     """Test ORDER BY ascending."""
@@ -232,6 +235,7 @@ async def test_order_by_multiple(client):
 
 # LIMIT and SKIP tests
 
+
 @pytest.mark.asyncio
 async def test_limit(client):
     """Test LIMIT clause."""
@@ -289,6 +293,7 @@ async def test_limit_and_skip(client):
 
 
 # Aggregation tests
+
 
 @pytest.mark.asyncio
 async def test_count(client):
@@ -360,6 +365,7 @@ async def test_avg(client):
         avg_age = page.rows[0]["avg_age"]
         # Handle both int and decimal return types based on value kind
         from geode_client.types import ValueKind
+
         if avg_age.kind == ValueKind.DECIMAL:
             assert float(avg_age.as_decimal) == 30.0
         else:

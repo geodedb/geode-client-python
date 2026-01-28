@@ -3,7 +3,7 @@ Type system for Geode values including DECIMAL, temporal types, and advanced typ
 """
 
 from dataclasses import dataclass
-from datetime import datetime, date, time
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional, Union

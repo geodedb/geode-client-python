@@ -124,6 +124,7 @@ Core client functionality:
 - **`Savepoint`**: Transaction savepoint for partial rollback.
 
 **Error Classes**:
+
 - `GeodeError` - Base exception
 - `GeodeConnectionError` - Connection failures
 - `QueryError` - Query execution failures
@@ -399,6 +400,7 @@ pip install aioquic
 ### Connection Refused
 
 Ensure Geode server is running:
+
 ```bash
 ./geode serve --listen 0.0.0.0:3141
 ```
@@ -410,6 +412,7 @@ For development, use `skip_verify=True`. For production, provide CA certificate.
 ### Timeout Errors
 
 Increase timeout or check network connectivity:
+
 ```python
 pool = ConnectionPool(timeout=60.0, ...)
 ```
@@ -417,9 +420,11 @@ pool = ConnectionPool(timeout=60.0, ...)
 ## Dependencies
 
 ### Required
+
 - `aioquic>=0.9.0` - QUIC implementation
 
 ### Development
+
 - `pytest>=7.0.0` - Testing
 - `pytest-asyncio>=0.21.0` - Async test support
 - `pytest-cov>=4.0.0` - Coverage

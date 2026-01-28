@@ -9,17 +9,16 @@ Tests the performance of:
 - Array/Object handling
 """
 
-import pytest
+from datetime import datetime
 from decimal import Decimal
-from datetime import datetime, date
 
 from geode_client import Value, ValueKind
 from geode_client.types import decode_value
 
-
 # ============================================================================
 # decode_value benchmarks
 # ============================================================================
+
 
 class TestDecodeValueBenchmarks:
     """Benchmarks for decode_value function."""
@@ -120,6 +119,7 @@ class TestDecodeValueBenchmarks:
 # Value accessor benchmarks
 # ============================================================================
 
+
 class TestValueAccessorBenchmarks:
     """Benchmarks for Value type accessors."""
 
@@ -187,6 +187,7 @@ class TestValueAccessorBenchmarks:
 # Value construction benchmarks
 # ============================================================================
 
+
 class TestValueConstructionBenchmarks:
     """Benchmarks for Value construction."""
 
@@ -222,6 +223,7 @@ class TestValueConstructionBenchmarks:
 # Decimal parsing benchmarks
 # ============================================================================
 
+
 class TestDecimalParsingBenchmarks:
     """Benchmarks for Decimal parsing performance."""
 
@@ -250,6 +252,7 @@ class TestDecimalParsingBenchmarks:
 # Timestamp parsing benchmarks
 # ============================================================================
 
+
 class TestTimestampParsingBenchmarks:
     """Benchmarks for timestamp parsing performance."""
 
@@ -267,15 +270,18 @@ class TestTimestampParsingBenchmarks:
 
     def test_parse_timestamp_z_suffix(self, benchmark):
         """Benchmark timestamp with Z suffix (requires replacement)."""
+
         def parse():
             s = "2024-01-15T10:30:45Z"
-            return datetime.fromisoformat(s.replace('Z', '+00:00'))
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
         benchmark(parse)
 
 
 # ============================================================================
 # Mixed workload benchmarks
 # ============================================================================
+
 
 class TestMixedWorkloadBenchmarks:
     """Benchmarks simulating realistic workloads."""
@@ -312,10 +318,7 @@ class TestMixedWorkloadBenchmarks:
         rows = [{**row_template, "id": i, "name": f"User_{i}"} for i in range(100)]
 
         def decode_result_set():
-            return [
-                {k: decode_value(v, "") for k, v in row.items()}
-                for row in rows
-            ]
+            return [{k: decode_value(v, "") for k, v in row.items()} for row in rows]
 
         benchmark(decode_result_set)
 
@@ -328,7 +331,7 @@ class TestMixedWorkloadBenchmarks:
                 "name": Value(kind=ValueKind.STRING, str_value="Alice"),
                 "active": Value(kind=ValueKind.BOOL, bool_value=True),
                 "score": Value(kind=ValueKind.DECIMAL, decimal_value=Decimal("85.5")),
-            }
+            },
         )
 
         def access_fields():

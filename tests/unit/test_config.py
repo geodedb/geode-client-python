@@ -1,8 +1,7 @@
 """Unit tests for Geode configuration and DSN parsing."""
 
-import pytest
 from geode_client import Client
-from geode_client.client import open_database, Connection
+from geode_client.client import Connection, open_database
 
 
 class TestClientCreation:
@@ -238,7 +237,7 @@ class TestConnectionCreation:
             client_cert="/path/to/client.crt",
             client_key="/path/to/client.key",
             skip_verify=True,
-            server_name="custom.example.com"
+            server_name="custom.example.com",
         )
         assert conn.ca_cert == "/path/to/ca.crt"
         assert conn.client_cert == "/path/to/client.crt"
@@ -268,12 +267,7 @@ class TestClientConnection:
 
     def test_passes_config(self):
         """Test connection() passes config to Connection."""
-        client = Client(
-            host="test.local",
-            port=9999,
-            skip_verify=True,
-            page_size=500
-        )
+        client = Client(host="test.local", port=9999, skip_verify=True, page_size=500)
         conn = client.connection()
         assert conn.host == "test.local"
         assert conn.port == 9999
@@ -314,19 +308,21 @@ class TestDataclasses:
     def test_column_dataclass(self):
         """Test Column dataclass."""
         from geode_client.client import Column
+
         col = Column(name="id", type="INT")
         assert col.name == "id"
         assert col.type == "INT"
 
     def test_page_dataclass(self):
         """Test Page dataclass."""
-        from geode_client.client import Page, Column
+        from geode_client.client import Column, Page
+
         page = Page(
             columns=[Column(name="x", type="INT")],
             rows=[],
             ordered=True,
             order_keys=["x"],
-            final=True
+            final=True,
         )
         assert len(page.columns) == 1
         assert page.ordered is True
@@ -336,12 +332,14 @@ class TestDataclasses:
     def test_page_default_order_keys(self):
         """Test Page default order_keys."""
         from geode_client.client import Page
+
         page = Page(columns=[], rows=[])
         assert page.order_keys == []
 
     def test_savepoint_dataclass(self):
         """Test Savepoint dataclass."""
         from geode_client.client import Savepoint
+
         sp = Savepoint(name="sp1")
         assert sp.name == "sp1"
         assert sp.connection is None

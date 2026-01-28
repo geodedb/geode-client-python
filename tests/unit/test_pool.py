@@ -1,8 +1,9 @@
 """Unit tests for Geode connection pool."""
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from geode_client import ConnectionPool
 from geode_client.pool import PooledConnection, create_pool
@@ -38,10 +39,7 @@ class TestConnectionPoolCreation:
     def test_creation_extra_kwargs(self):
         """Test pool passes extra kwargs to client."""
         pool = ConnectionPool(
-            host="localhost",
-            port=3141,
-            skip_verify=True,
-            page_size=500
+            host="localhost", port=3141, skip_verify=True, page_size=500
         )
         assert pool.client.config["skip_verify"] is True
         assert pool.client.config["page_size"] == 500
@@ -91,7 +89,7 @@ class TestConnectionPoolAsync:
     @pytest.mark.asyncio
     async def test_initialize_creates_connections(self):
         """Test initialize creates min_size connections."""
-        with patch.object(ConnectionPool, '_create_connection') as mock_create:
+        with patch.object(ConnectionPool, "_create_connection") as mock_create:
             mock_conn = AsyncMock()
             mock_create.return_value = mock_conn
 
@@ -104,7 +102,7 @@ class TestConnectionPoolAsync:
     @pytest.mark.asyncio
     async def test_initialize_idempotent(self):
         """Test initialize is idempotent."""
-        with patch.object(ConnectionPool, '_create_connection') as mock_create:
+        with patch.object(ConnectionPool, "_create_connection") as mock_create:
             mock_conn = AsyncMock()
             mock_create.return_value = mock_conn
 
@@ -118,7 +116,7 @@ class TestConnectionPoolAsync:
     @pytest.mark.asyncio
     async def test_acquire_initializes_pool(self):
         """Test acquire initializes pool if not initialized."""
-        with patch.object(ConnectionPool, '_create_connection') as mock_create:
+        with patch.object(ConnectionPool, "_create_connection") as mock_create:
             mock_conn = AsyncMock()
             mock_create.return_value = mock_conn
 
@@ -135,7 +133,7 @@ class TestConnectionPoolAsync:
     @pytest.mark.asyncio
     async def test_acquire_returns_pooled_connection(self):
         """Test acquire returns PooledConnection."""
-        with patch.object(ConnectionPool, '_create_connection') as mock_create:
+        with patch.object(ConnectionPool, "_create_connection") as mock_create:
             mock_conn = AsyncMock()
             mock_create.return_value = mock_conn
 
@@ -184,7 +182,7 @@ class TestConnectionPoolAsync:
     @pytest.mark.asyncio
     async def test_context_manager(self):
         """Test async context manager."""
-        with patch.object(ConnectionPool, '_create_connection') as mock_create:
+        with patch.object(ConnectionPool, "_create_connection") as mock_create:
             mock_conn = AsyncMock()
             mock_create.return_value = mock_conn
 
@@ -271,15 +269,12 @@ class TestCreatePool:
     @pytest.mark.asyncio
     async def test_creates_and_initializes(self):
         """Test create_pool creates and initializes pool."""
-        with patch.object(ConnectionPool, '_create_connection') as mock_create:
+        with patch.object(ConnectionPool, "_create_connection") as mock_create:
             mock_conn = AsyncMock()
             mock_create.return_value = mock_conn
 
             pool = await create_pool(
-                host="test.local",
-                port=9999,
-                min_size=3,
-                max_size=20
+                host="test.local", port=9999, min_size=3, max_size=20
             )
 
             assert isinstance(pool, ConnectionPool)
@@ -291,14 +286,11 @@ class TestCreatePool:
     @pytest.mark.asyncio
     async def test_passes_kwargs(self):
         """Test create_pool passes kwargs to pool."""
-        with patch.object(ConnectionPool, '_create_connection') as mock_create:
+        with patch.object(ConnectionPool, "_create_connection") as mock_create:
             mock_conn = AsyncMock()
             mock_create.return_value = mock_conn
 
-            pool = await create_pool(
-                skip_verify=True,
-                page_size=2000
-            )
+            pool = await create_pool(skip_verify=True, page_size=2000)
 
             assert pool.client.config["skip_verify"] is True
             assert pool.client.config["page_size"] == 2000
@@ -326,7 +318,7 @@ class TestPoolConcurrency:
     @pytest.mark.asyncio
     async def test_acquire_creates_when_empty(self):
         """Test _acquire creates connection when pool is empty."""
-        with patch.object(ConnectionPool, '_create_connection') as mock_create:
+        with patch.object(ConnectionPool, "_create_connection") as mock_create:
             mock_conn = AsyncMock()
             mock_create.return_value = mock_conn
 
@@ -389,7 +381,7 @@ class TestPoolSizeTracking:
     @pytest.mark.asyncio
     async def test_size_increases_on_create(self):
         """Test size increases when connection is created."""
-        with patch('geode_client.pool.Client') as mock_client_class:
+        with patch("geode_client.pool.Client") as mock_client_class:
             mock_client = MagicMock()
             mock_conn = AsyncMock()
             mock_client.connect = AsyncMock(return_value=mock_conn)

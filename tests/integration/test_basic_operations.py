@@ -26,9 +26,7 @@ async def test_basic_connection(client):
 async def test_simple_return(client):
     """Test simple RETURN query with multiple types."""
     async with client.connection() as conn:
-        page, _ = await conn.query(
-            "RETURN 42 AS num, 'Hello' AS text, true AS flag"
-        )
+        page, _ = await conn.query("RETURN 42 AS num, 'Hello' AS text, true AS flag")
         assert len(page.rows) == 1
         row = page.rows[0]
         assert row["num"].as_int == 42
@@ -55,9 +53,7 @@ async def test_parameterized_query(client):
 async def test_multiple_return_columns(client):
     """Test query with multiple return columns."""
     async with client.connection() as conn:
-        page, _ = await conn.query(
-            "RETURN 1 AS a, 2 AS b, 3 AS c, 4 AS d, 5 AS e"
-        )
+        page, _ = await conn.query("RETURN 1 AS a, 2 AS b, 3 AS c, 4 AS d, 5 AS e")
         assert len(page.rows) == 1
         assert len(page.columns) == 5
 
@@ -123,9 +119,7 @@ async def test_empty_result(client):
     """Test query that returns empty result."""
     async with client.connection() as conn:
         # Use a label that shouldn't exist
-        page, _ = await conn.query(
-            "MATCH (n:NonExistentLabel12345) RETURN n"
-        )
+        page, _ = await conn.query("MATCH (n:NonExistentLabel12345) RETURN n")
         assert len(page.rows) == 0
 
 
@@ -160,9 +154,7 @@ async def test_case_expression(client):
 async def test_coalesce_function(client):
     """Test COALESCE function."""
     async with client.connection() as conn:
-        page, _ = await conn.query(
-            "RETURN COALESCE(null, 'fallback') AS value"
-        )
+        page, _ = await conn.query("RETURN COALESCE(null, 'fallback') AS value")
         assert len(page.rows) == 1
         assert page.rows[0]["value"].as_string == "fallback"
 

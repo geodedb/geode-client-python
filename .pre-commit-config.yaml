@@ -1,0 +1,173 @@
+# Pre-commit configuration for Geode Python Client
+# https://pre-commit.com/
+#
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# Update hooks: pre-commit autoupdate
+
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  # =============================================================================
+  # Standard pre-commit hooks (best practices)
+  # =============================================================================
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+      # Formatting
+  - id: trailing-whitespace
+    args: [--markdown-linebreak-ext=md]
+    exclude: ^(dist/|\.eggs/|.*\.egg-info/)
+  - id: end-of-file-fixer
+    exclude: ^(dist/|\.eggs/|.*\.egg-info/|.*\.bin$|.*\.der$|.*\.pem$)
+  - id: mixed-line-ending
+    args: [--fix=lf]
+    exclude: ^(dist/|\.eggs/)
+
+      # Syntax validation
+  - id: check-yaml
+    args: [--unsafe]      # Allow custom tags
+    exclude: ^(dist/)
+  - id: check-json
+    exclude: ^(dist/)
+  - id: check-toml
+
+      # Security
+  - id: detect-private-key
+    exclude: ^(certs/|test.*certs/|.*test.*\.pem$)
+  - id: check-added-large-files
+    args: [--maxkb=1024]
+    exclude: ^(dist/)
+
+      # Git hygiene
+  - id: check-merge-conflict
+  - id: check-case-conflict
+  - id: check-symlinks
+  - id: destroyed-symlinks
+
+      # Code quality
+  - id: check-executables-have-shebangs
+    exclude: ^(dist/)
+  - id: check-shebang-scripts-are-executable
+    exclude: ^(dist/)
+
+      # Python-specific
+  - id: check-ast
+  - id: check-docstring-first
+  - id: debug-statements
+  - id: name-tests-test
+    args: [--pytest-test-first]
+    exclude: ^(tests/conftest\.py|tests/.*/conftest\.py)
+
+  # =============================================================================
+  # Shell script linting
+  # =============================================================================
+- repo: https://github.com/shellcheck-py/shellcheck-py
+  rev: v0.11.0.1
+  hooks:
+  - id: shellcheck
+    args: [--severity=warning]
+    exclude: ^(dist/)
+
+  # =============================================================================
+  # Python linting and formatting
+  # =============================================================================
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.14.14
+  hooks:
+  - id: ruff
+    args: [--fix, --exit-non-zero-on-fix]
+    exclude: ^(dist/)
+  - id: ruff-format
+    exclude: ^(dist/)
+
+  # =============================================================================
+  # Python type checking
+  # =============================================================================
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v1.17.0
+  hooks:
+  - id: mypy
+    args: [--config-file=mypy.ini]
+    additional_dependencies:
+    - types-setuptools
+    exclude: ^(dist/|tests/|examples/|benchmarks/)
+
+  # =============================================================================
+  # Markdown linting
+  # =============================================================================
+- repo: https://github.com/igorshubovych/markdownlint-cli
+  rev: v0.47.0
+  hooks:
+  - id: markdownlint
+    args: [--fix, --disable, MD013, MD033, MD041, MD024, --]
+    exclude: ^(dist/|CHANGELOG\.md)
+
+  # =============================================================================
+  # YAML formatting
+  # =============================================================================
+- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  rev: v2.16.0
+  hooks:
+  - id: pretty-format-yaml
+    args: [--autofix, --indent, '2']
+    exclude: ^(dist/|\.gitlab-ci\.yml)
+
+  # =============================================================================
+  # Commit message validation (Conventional Commits)
+  # =============================================================================
+- repo: https://github.com/commitizen-tools/commitizen
+  rev: v4.12.1
+  hooks:
+  - id: commitizen
+    stages: [commit-msg]
+
+  # =============================================================================
+  # Local/Custom hooks for Python
+  # =============================================================================
+- repo: local
+  hooks:
+      # Run pytest unit tests (fast)
+  - id: pytest-unit
+    name: pytest unit tests
+    entry: bash
+    args:
+    - -c
+    - |
+      if [ -d ".venv" ]; then
+        source .venv/bin/activate
+      fi
+      pytest tests/unit/ -x -q --no-header 2>/dev/null || pytest tests/unit/ -x -q --no-header
+    language: system
+    files: \.(py)$
+    exclude: ^(dist/|tests/integration/|benchmarks/)
+    pass_filenames: false
+    stages: [pre-push]      # Only on push, may be slow
+
+      # Check for TODO/FIXME in committed code (warning only)
+  - id: check-todos
+    name: check for TODOs/FIXMEs
+    entry: bash
+    args:
+    - -c
+    - |
+      git diff --cached --name-only | xargs grep -l -E "(TODO|FIXME|XXX|HACK)" 2>/dev/null && echo "Warning: Found TODO/FIXME markers in staged files" && exit 0 || exit 0
+    language: system
+    pass_filenames: false
+    verbose: true
+
+# =============================================================================
+# CI configuration
+# =============================================================================
+ci:
+  autofix_prs: true
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    For more info see https://pre-commit.ci
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: [mypy, pytest-unit]
+  submodules: false

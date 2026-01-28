@@ -7,15 +7,16 @@ Supports two modes:
 2. Docker mode: If env vars are not set, starts a Docker container.
 """
 
+import atexit
 import os
-import time
-import pytest
-import asyncio
 import subprocess
-from typing import Generator, Optional
+import time
+from collections.abc import Generator
+from typing import Optional
+
+import pytest
 
 from geode_client import Client, ConnectionPool
-
 
 # Test configuration
 GEODE_IMAGE = "registry.gitlab.com/devnw/geode/geode:latest"
@@ -31,8 +32,9 @@ _EXTERNAL_PORT = os.environ.get("GEODE_PORT")
 def _find_available_port() -> int:
     """Find an available UDP port."""
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind(('', 0))
+        s.bind(("", 0))
         return s.getsockname()[1]
 
 
@@ -45,7 +47,7 @@ def _wait_for_server_ready(container_name: str, timeout: int = 60) -> bool:
                 ["docker", "logs", container_name],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             if "Server ready" in result.stdout or "Server ready" in result.stderr:
                 return True
@@ -64,9 +66,7 @@ def _cleanup_container(container_name: str) -> None:
     """Remove container if it exists."""
     try:
         subprocess.run(
-            ["docker", "rm", "-f", container_name],
-            capture_output=True,
-            timeout=10
+            ["docker", "rm", "-f", container_name], capture_output=True, timeout=10
         )
     except Exception:
         pass
@@ -99,20 +99,24 @@ class GeodeContainer:
         self.host_port = _find_available_port()
 
         # Pull image if needed
-        subprocess.run(
-            ["docker", "pull", self.image],
-            capture_output=True,
-            timeout=300
-        )
+        subprocess.run(["docker", "pull", self.image], capture_output=True, timeout=300)
 
         # Start container with UDP port mapping
         # Note: Docker requires -p host:container/udp for UDP ports
         cmd = [
-            "docker", "run", "-d",
-            "--name", self.container_name,
-            "-p", f"{self.host_port}:{self.container_port}/udp",
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            self.container_name,
+            "-p",
+            f"{self.host_port}:{self.container_port}/udp",
             self.image,
-            "serve", "--listen", f"0.0.0.0:{self.container_port}", "--log-level", "info"
+            "serve",
+            "--listen",
+            f"0.0.0.0:{self.container_port}",
+            "--log-level",
+            "info",
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -122,12 +126,12 @@ class GeodeContainer:
         # Wait for server to be ready
         if not _wait_for_server_ready(self.container_name, CONTAINER_STARTUP_TIMEOUT):
             logs = subprocess.run(
-                ["docker", "logs", self.container_name],
-                capture_output=True,
-                text=True
+                ["docker", "logs", self.container_name], capture_output=True, text=True
             )
             _cleanup_container(self.container_name)
-            raise RuntimeError(f"Container failed to start. Logs:\n{logs.stdout}\n{logs.stderr}")
+            raise RuntimeError(
+                f"Container failed to start. Logs:\n{logs.stdout}\n{logs.stderr}"
+            )
 
         self._started = True
         return self
@@ -251,8 +255,6 @@ async def pool(geode_host: str, geode_port: int):
 
 
 # Cleanup on exit
-import atexit
-
 @atexit.register
 def _cleanup_on_exit():
     """Clean up container when Python exits (only if we started one)."""
@@ -267,7 +269,7 @@ def pytest_configure(config):
     """Register integration marker."""
     config.addinivalue_line(
         "markers",
-        "integration: mark test as integration test (requires Geode server or Docker)"
+        "integration: mark test as integration test (requires Geode server or Docker)",
     )
 
 

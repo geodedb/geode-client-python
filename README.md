@@ -466,6 +466,7 @@ The QUIC client provides excellent performance characteristics:
 For optimal QUIC throughput on high-bandwidth connections, configure UDP buffer sizes at the OS level.
 
 **Linux:**
+
 ```bash
 # Increase UDP buffer sizes to 7MB
 sudo sysctl -w net.core.rmem_max=7340032
@@ -477,6 +478,7 @@ echo "net.core.wmem_max=7340032" | sudo tee -a /etc/sysctl.d/99-geode-quic.conf
 ```
 
 **BSD/macOS:**
+
 ```bash
 sudo sysctl -w kern.ipc.maxsockbuf=8441037
 ```
@@ -580,9 +582,11 @@ Contributions are welcome! Please follow these guidelines:
 3. Write tests first (TDD recommended)
 4. Implement your changes
 5. Run all quality checks:
+
    ```bash
    ruff check geode_client/ && mypy geode_client/ && pytest tests/unit/
    ```
+
 6. Update documentation if needed
 7. Submit a merge request
 

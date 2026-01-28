@@ -10,17 +10,23 @@ Tests the robustness of:
 """
 
 import json
-import pytest
-from decimal import Decimal, InvalidOperation
-from datetime import datetime, date, time
-from hypothesis import given, assume, settings, HealthCheck
+from decimal import Decimal
+
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from geode_client import Client, Connection, ConnectionPool
-from geode_client import QueryBuilder, PatternBuilder, PredicateBuilder, EdgeDirection
-from geode_client import Value, ValueKind
+from geode_client import (
+    Client,
+    Connection,
+    ConnectionPool,
+    EdgeDirection,
+    PatternBuilder,
+    PredicateBuilder,
+    QueryBuilder,
+    Value,
+    ValueKind,
+)
 from geode_client.types import decode_value
-
 
 # ============================================================================
 # Custom strategies
@@ -41,7 +47,9 @@ ports = st.integers(min_value=1, max_value=65535)
 page_sizes = st.integers(min_value=1, max_value=100000)
 
 # Boolean-like strings
-bool_strings = st.sampled_from(["true", "false", "1", "0", "True", "False", "TRUE", "FALSE"])
+bool_strings = st.sampled_from(
+    ["true", "false", "1", "0", "True", "False", "TRUE", "FALSE"]
+)
 
 # Valid parameter names (alphanumeric with underscores)
 param_names = st.from_regex(r"[a-zA-Z_][a-zA-Z0-9_]{0,63}", fullmatch=True)
@@ -60,7 +68,7 @@ date_strings = st.builds(
     lambda y, m, d: f"{y:04d}-{m:02d}-{d:02d}",
     y=st.integers(min_value=1900, max_value=2100),
     m=st.integers(min_value=1, max_value=12),
-    d=st.integers(min_value=1, max_value=28)  # Safe for all months
+    d=st.integers(min_value=1, max_value=28),  # Safe for all months
 )
 
 # Timestamp strings (ISO format)
@@ -71,14 +79,14 @@ timestamp_strings = st.builds(
     d=st.integers(min_value=1, max_value=28),
     h=st.integers(min_value=0, max_value=23),
     mi=st.integers(min_value=0, max_value=59),
-    s=st.integers(min_value=0, max_value=59)
+    s=st.integers(min_value=0, max_value=59),
 )
 
 # JSON-like values for decode_value testing
 json_primitives = st.one_of(
     st.none(),
     st.booleans(),
-    st.integers(min_value=-2**31, max_value=2**31-1),
+    st.integers(min_value=-(2**31), max_value=2**31 - 1),
     st.text(max_size=100),
 )
 
@@ -86,6 +94,7 @@ json_primitives = st.one_of(
 # ============================================================================
 # URL/DSN parsing property tests
 # ============================================================================
+
 
 class TestURLParsingProperties:
     """Property tests for URL/DSN parsing."""
@@ -117,7 +126,11 @@ class TestURLParsingProperties:
         expected = skip_verify.lower() in ("1", "true")
         assert client.config.get("skip_verify", False) == expected
 
-    @given(host=hostnames, port=ports, name=st.text(min_size=1, max_size=50).filter(lambda x: x.isalnum()))
+    @given(
+        host=hostnames,
+        port=ports,
+        name=st.text(min_size=1, max_size=50).filter(lambda x: x.isalnum()),
+    )
     @settings(max_examples=100, suppress_health_check=[HealthCheck.filter_too_much])
     def test_url_with_hello_name(self, host, port, name):
         """URLs with hello_name parameter should parse correctly."""
@@ -156,20 +169,12 @@ class TestConnectionConfigProperties:
         conn = Connection(page_size=page_size)
         assert conn.page_size == page_size
 
-    @given(
-        host=hostnames,
-        port=ports,
-        page_size=page_sizes,
-        skip_verify=st.booleans()
-    )
+    @given(host=hostnames, port=ports, page_size=page_sizes, skip_verify=st.booleans())
     @settings(max_examples=100)
     def test_connection_all_params(self, host, port, page_size, skip_verify):
         """Connection should accept all valid parameters."""
         conn = Connection(
-            host=host,
-            port=port,
-            page_size=page_size,
-            skip_verify=skip_verify
+            host=host, port=port, page_size=page_size, skip_verify=skip_verify
         )
         assert conn.host == host
         assert conn.port == port
@@ -181,10 +186,11 @@ class TestConnectionConfigProperties:
 # Value type conversion property tests
 # ============================================================================
 
+
 class TestValueConversionProperties:
     """Property tests for Value type conversions."""
 
-    @given(value=st.integers(min_value=-2**63, max_value=2**63-1))
+    @given(value=st.integers(min_value=-(2**63), max_value=2**63 - 1))
     @settings(max_examples=200)
     def test_decode_int_roundtrip(self, value):
         """Integers should decode correctly."""
@@ -252,7 +258,7 @@ class TestValueConversionProperties:
         d=st.dictionaries(
             keys=st.text(min_size=1, max_size=20).filter(str.isidentifier),
             values=st.integers(min_value=-1000, max_value=1000),
-            max_size=20
+            max_size=20,
         )
     )
     @settings(max_examples=100, suppress_health_check=[HealthCheck.filter_too_much])
@@ -275,7 +281,7 @@ class TestValueConversionProperties:
 class TestValueConstructionProperties:
     """Property tests for Value construction."""
 
-    @given(value=st.integers(min_value=-2**63, max_value=2**63-1))
+    @given(value=st.integers(min_value=-(2**63), max_value=2**63 - 1))
     @settings(max_examples=100)
     def test_construct_int(self, value):
         """INT values should construct correctly."""
@@ -311,12 +317,15 @@ class TestValueConstructionProperties:
 # JSON frame parsing property tests
 # ============================================================================
 
+
 class TestJSONFrameParsingProperties:
     """Property tests for JSON frame parsing."""
 
     @given(
-        msg_type=st.sampled_from(["HELLO", "RUN_GQL", "PULL", "BEGIN", "COMMIT", "ROLLBACK"]),
-        request_id=st.integers(min_value=0, max_value=2**31-1)
+        msg_type=st.sampled_from(
+            ["HELLO", "RUN_GQL", "PULL", "BEGIN", "COMMIT", "ROLLBACK"]
+        ),
+        request_id=st.integers(min_value=0, max_value=2**31 - 1),
     )
     @settings(max_examples=100)
     def test_json_message_roundtrip(self, msg_type, request_id):
@@ -334,20 +343,16 @@ class TestJSONFrameParsingProperties:
             values=st.one_of(
                 st.none(),
                 st.booleans(),
-                st.integers(min_value=-2**31, max_value=2**31-1),
-                st.text(max_size=50)
+                st.integers(min_value=-(2**31), max_value=2**31 - 1),
+                st.text(max_size=50),
             ),
-            max_size=10
-        )
+            max_size=10,
+        ),
     )
     @settings(max_examples=100)
     def test_run_gql_message_roundtrip(self, query, params):
         """RUN_GQL messages should serialize correctly."""
-        msg = {
-            "type": "RUN_GQL",
-            "text": query,
-            "params": params
-        }
+        msg = {"type": "RUN_GQL", "text": query, "params": params}
         serialized = json.dumps(msg)
         parsed = json.loads(serialized)
         assert parsed["text"] == query
@@ -358,21 +363,15 @@ class TestJSONFrameParsingProperties:
             st.dictionaries(
                 keys=identifiers,
                 values=st.one_of(st.none(), st.integers(), st.text(max_size=20)),
-                max_size=5
+                max_size=5,
             ),
-            max_size=10
+            max_size=10,
         )
     )
     @settings(max_examples=100)
     def test_bindings_response_roundtrip(self, rows):
         """BINDINGS responses should serialize correctly."""
-        msg = {
-            "result": {
-                "type": "BINDINGS",
-                "rows": rows,
-                "final": True
-            }
-        }
+        msg = {"result": {"type": "BINDINGS", "rows": rows, "final": True}}
         serialized = json.dumps(msg)
         parsed = json.loads(serialized)
         assert parsed["result"]["rows"] == rows
@@ -393,6 +392,7 @@ class TestJSONFrameParsingProperties:
 # Query builder property tests
 # ============================================================================
 
+
 class TestQueryBuilderProperties:
     """Property tests for QueryBuilder."""
 
@@ -412,7 +412,9 @@ class TestQueryBuilderProperties:
         query, params = qb.build()
         assert expr in query
 
-    @given(expressions=st.lists(st.text(min_size=1, max_size=50), min_size=1, max_size=5))
+    @given(
+        expressions=st.lists(st.text(min_size=1, max_size=50), min_size=1, max_size=5)
+    )
     @settings(max_examples=100)
     def test_return_accepts_multiple_expressions(self, expressions):
         """RETURN should accept multiple expressions."""
@@ -440,11 +442,8 @@ class TestQueryBuilderProperties:
     @given(
         param_name=param_names,
         param_value=st.one_of(
-            st.none(),
-            st.booleans(),
-            st.integers(),
-            st.text(max_size=50)
-        )
+            st.none(), st.booleans(), st.integers(), st.text(max_size=50)
+        ),
     )
     @settings(max_examples=100)
     def test_with_param_stores_params(self, param_name, param_value):
@@ -457,8 +456,10 @@ class TestQueryBuilderProperties:
     @given(
         params=st.dictionaries(
             keys=param_names,
-            values=st.one_of(st.none(), st.booleans(), st.integers(), st.text(max_size=50)),
-            max_size=20
+            values=st.one_of(
+                st.none(), st.booleans(), st.integers(), st.text(max_size=50)
+            ),
+            max_size=20,
         )
     )
     @settings(max_examples=100)
@@ -496,9 +497,11 @@ class TestPatternBuilderProperties:
         label=labels,
         props=st.dictionaries(
             keys=identifiers,
-            values=st.one_of(st.integers(min_value=-100, max_value=100), st.text(max_size=20)),
-            max_size=5
-        )
+            values=st.one_of(
+                st.integers(min_value=-100, max_value=100), st.text(max_size=20)
+            ),
+            max_size=5,
+        ),
     )
     @settings(max_examples=100)
     def test_node_with_properties(self, var, label, props):
@@ -511,7 +514,9 @@ class TestPatternBuilderProperties:
     @given(
         var=identifiers,
         rel_type=st.from_regex(r"[A-Z][A-Z0-9_]{0,20}", fullmatch=True),
-        direction=st.sampled_from([EdgeDirection.OUTGOING, EdgeDirection.INCOMING, EdgeDirection.UNDIRECTED])
+        direction=st.sampled_from(
+            [EdgeDirection.OUTGOING, EdgeDirection.INCOMING, EdgeDirection.UNDIRECTED]
+        ),
     )
     @settings(max_examples=100)
     def test_edge_with_type(self, var, rel_type, direction):
@@ -580,7 +585,7 @@ class TestPredicateBuilderProperties:
 
     @given(
         field=identifiers,
-        values=st.lists(st.text(min_size=1, max_size=20), min_size=1, max_size=5)
+        values=st.lists(st.text(min_size=1, max_size=20), min_size=1, max_size=5),
     )
     @settings(max_examples=100)
     def test_in_predicate(self, field, values):
@@ -595,12 +600,13 @@ class TestPredicateBuilderProperties:
 # Pool configuration property tests
 # ============================================================================
 
+
 class TestPoolConfigProperties:
     """Property tests for ConnectionPool configuration."""
 
     @given(
         min_size=st.integers(min_value=1, max_value=10),
-        max_size=st.integers(min_value=10, max_value=100)
+        max_size=st.integers(min_value=10, max_value=100),
     )
     @settings(max_examples=100)
     def test_pool_size_config(self, min_size, max_size):
@@ -621,6 +627,7 @@ class TestPoolConfigProperties:
 # ============================================================================
 # Fuzz-like tests with truly arbitrary input
 # ============================================================================
+
 
 class TestFuzzLikeProperties:
     """Fuzz-like tests that throw arbitrary data at the API."""
@@ -653,9 +660,9 @@ class TestFuzzLikeProperties:
         clauses=st.lists(
             st.tuples(
                 st.sampled_from(["MATCH", "WHERE", "RETURN", "ORDER BY", "LIMIT"]),
-                st.text(max_size=50)
+                st.text(max_size=50),
             ),
-            max_size=10
+            max_size=10,
         )
     )
     @settings(max_examples=100)
@@ -684,18 +691,22 @@ class TestFuzzLikeProperties:
 
     @given(
         nodes=st.lists(
-            st.tuples(identifiers, st.one_of(st.none(), labels)),
-            min_size=1,
-            max_size=5
+            st.tuples(identifiers, st.one_of(st.none(), labels)), min_size=1, max_size=5
         ),
         edges=st.lists(
             st.tuples(
                 identifiers,
                 st.from_regex(r"[A-Z][A-Z0-9_]{0,10}", fullmatch=True),
-                st.sampled_from([EdgeDirection.OUTGOING, EdgeDirection.INCOMING, EdgeDirection.UNDIRECTED])
+                st.sampled_from(
+                    [
+                        EdgeDirection.OUTGOING,
+                        EdgeDirection.INCOMING,
+                        EdgeDirection.UNDIRECTED,
+                    ]
+                ),
             ),
-            max_size=4
-        )
+            max_size=4,
+        ),
     )
     @settings(max_examples=100)
     def test_pattern_builder_arbitrary_structure(self, nodes, edges):

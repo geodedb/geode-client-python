@@ -20,7 +20,8 @@ GEODE_PORT ?= 3141
 
 .PHONY: all build install install-dev clean test test-unit test-property test-integration \
         test-integration-docker bench lint fmt fmt-check typecheck doc coverage ci ci-quick \
-        ci-full help venv docker-start docker-stop docker-logs example
+        ci-full help venv docker-start docker-stop docker-logs example \
+        pre-commit pre-commit-install pre-commit-all pre-commit-update
 
 # Default target - run everything (except integration tests which require server)
 all: install-dev fmt-check lint typecheck test-unit test-property bench-quick
@@ -43,10 +44,11 @@ help:
 	@echo "============================="
 	@echo ""
 	@echo "Setup targets:"
-	@echo "  make venv          - Create virtual environment"
-	@echo "  make install       - Install package"
-	@echo "  make install-dev   - Install with dev dependencies"
-	@echo "  make clean         - Clean build artifacts and caches"
+	@echo "  make venv              - Create virtual environment"
+	@echo "  make install           - Install package"
+	@echo "  make install-dev       - Install with dev dependencies"
+	@echo "  make clean             - Clean build artifacts and caches"
+	@echo "  make pre-commit-install - Install pre-commit hooks"
 	@echo ""
 	@echo "Test targets:"
 	@echo "  make test          - Run all tests (unit + property)"
@@ -61,6 +63,9 @@ help:
 	@echo "  make fmt           - Format code with ruff"
 	@echo "  make fmt-check     - Check formatting without changes"
 	@echo "  make typecheck     - Run mypy type checker"
+	@echo "  make pre-commit    - Run pre-commit on staged files"
+	@echo "  make pre-commit-all - Run pre-commit on all files"
+	@echo "  make pre-commit-update - Update pre-commit hooks"
 	@echo ""
 	@echo "Benchmark targets:"
 	@echo "  make bench         - Run all benchmarks (154 benchmarks)"
@@ -107,6 +112,7 @@ install-dev: venv
 	@echo "Installing package with dev dependencies..."
 	$(VENV_PIP) install -e ".[dev,integration,benchmark,property]"
 	@echo "✓ Package installed with dev dependencies"
+	@echo "  Run 'make pre-commit-install' to set up git hooks"
 
 build: install-dev
 	@echo "✓ Build complete"
@@ -202,6 +208,32 @@ typecheck:
 	@echo "Running mypy type checker..."
 	$(VENV_DIR)/bin/mypy geode_client/ --ignore-missing-imports
 	@echo "✓ Type check complete (0 errors)"
+
+# =============================================================================
+# Pre-commit Targets
+# =============================================================================
+
+pre-commit-install: install-dev
+	@echo "Installing pre-commit hooks..."
+	$(VENV_DIR)/bin/pre-commit install
+	$(VENV_DIR)/bin/pre-commit install --hook-type commit-msg
+	@echo "✓ Pre-commit hooks installed"
+	@echo "  Hooks will run automatically on git commit"
+
+pre-commit:
+	@echo "Running pre-commit on staged files..."
+	$(VENV_DIR)/bin/pre-commit run
+	@echo "✓ Pre-commit complete"
+
+pre-commit-all:
+	@echo "Running pre-commit on all files..."
+	$(VENV_DIR)/bin/pre-commit run --all-files
+	@echo "✓ Pre-commit complete (all files)"
+
+pre-commit-update:
+	@echo "Updating pre-commit hooks..."
+	$(VENV_DIR)/bin/pre-commit autoupdate
+	@echo "✓ Pre-commit hooks updated"
 
 # =============================================================================
 # Benchmark Targets

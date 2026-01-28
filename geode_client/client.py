@@ -8,19 +8,20 @@ import asyncio
 import json
 import os
 import sys
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.events import (
+    ConnectionTerminated,
     QuicEvent,
+    StopSendingReceived,
     StreamDataReceived,
     StreamReset,
-    ConnectionTerminated,
-    StopSendingReceived,
 )
 
 from .types import Value, decode_value

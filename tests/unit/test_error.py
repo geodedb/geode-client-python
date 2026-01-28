@@ -1,7 +1,6 @@
 """Unit tests for Geode error types."""
 
-import pytest
-from geode_client import GeodeError, GeodeConnectionError, QueryError, AuthError
+from geode_client import AuthError, GeodeConnectionError, GeodeError, QueryError
 
 
 class TestGeodeError:
@@ -51,7 +50,9 @@ class TestGeodeConnectionError:
 
     def test_connection_refused_message(self):
         """Test typical connection refused message."""
-        err = GeodeConnectionError("Failed to establish QUIC connection: Connection refused")
+        err = GeodeConnectionError(
+            "Failed to establish QUIC connection: Connection refused"
+        )
         assert "QUIC" in str(err)
         assert "Connection refused" in str(err)
 
@@ -62,7 +63,9 @@ class TestGeodeConnectionError:
 
     def test_tls_error_message(self):
         """Test TLS-related error message."""
-        err = GeodeConnectionError("TLS handshake failed: certificate verification failed")
+        err = GeodeConnectionError(
+            "TLS handshake failed: certificate verification failed"
+        )
         assert "TLS" in str(err)
 
 

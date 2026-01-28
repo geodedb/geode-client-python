@@ -9,8 +9,9 @@ Tests cover:
 - Relationship types
 """
 
-import pytest
 import uuid
+
+import pytest
 
 
 def unique_id() -> str:
@@ -70,7 +71,9 @@ async def test_relationship_with_properties(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Server may not properly enforce relationship direction - known server behavior")
+@pytest.mark.xfail(
+    reason="Server may not properly enforce relationship direction - known server behavior"
+)
 async def test_outgoing_direction(client):
     """Test outgoing relationship direction."""
     uid = unique_id()
@@ -102,7 +105,9 @@ async def test_outgoing_direction(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Server may not properly enforce relationship direction - known server behavior")
+@pytest.mark.xfail(
+    reason="Server may not properly enforce relationship direction - known server behavior"
+)
 async def test_incoming_direction(client):
     """Test incoming relationship direction."""
     uid = unique_id()
@@ -134,7 +139,9 @@ async def test_incoming_direction(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Server may not properly handle undirected relationship matching - known server behavior")
+@pytest.mark.xfail(
+    reason="Server may not properly handle undirected relationship matching - known server behavior"
+)
 async def test_undirected_relationship(client):
     """Test matching relationships regardless of direction."""
     uid = unique_id()
@@ -254,7 +261,9 @@ async def test_relationship_count(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Server may delete nodes when deleting relationships - known server behavior")
+@pytest.mark.xfail(
+    reason="Server may delete nodes when deleting relationships - known server behavior"
+)
 async def test_delete_relationship(client):
     """Test deleting a relationship."""
     uid = unique_id()

@@ -1,0 +1,78 @@
+# Ruff configuration for Geode Python Client
+# https://docs.astral.sh/ruff/configuration/
+
+# Target Python 3.9+
+target-version = "py39"
+
+# Line length matches common Python standards
+line-length = 88
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".hypothesis",
+    ".benchmarks",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[lint]
+# Enable recommended rule sets
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+
+# Ignore rules that conflict with project style
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "B008",   # Function call in default argument (needed for some patterns)
+    "ARG001", # Unused function argument (common in callbacks/protocols)
+    "ARG002", # Unused method argument (common in callbacks/protocols)
+    "SIM108", # Use ternary operator (not always cleaner)
+    "SIM102", # Nested if - not always cleaner to combine
+    "SIM105", # Use contextlib.suppress - not always cleaner
+    "SIM117", # Combine with statements - not always cleaner
+    "UP035",  # typing.List/Dict deprecated - large codebase change
+    "UP006",  # Use list instead of List - large codebase change
+    "B007",   # Loop control variable not used - common pattern
+    "B904",   # raise from err - existing code pattern
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+[lint.isort]
+known-first-party = ["geode_client"]
+
+[lint.per-file-ignores]
+# Tests can have unused arguments (fixtures), assertions, etc.
+"tests/**/*.py" = ["ARG", "S101"]
+"benchmarks/**/*.py" = ["ARG", "S101"]
+
+[format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Respect magic trailing commas
+skip-magic-trailing-comma = false
+
+# Unix-style line endings
+line-ending = "lf"

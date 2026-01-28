@@ -1,8 +1,9 @@
 """Unit tests for the client module."""
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from geode_client.client import (
     AuthError,
@@ -570,9 +571,7 @@ class TestConnectionQuery:
     async def test_query_unexpected_frame(self, mock_connection_for_query):
         """Test query with unexpected frame type."""
         conn = mock_connection_for_query
-        conn._read_json.return_value = {
-            "result": {"type": "UNKNOWN"}
-        }
+        conn._read_json.return_value = {"result": {"type": "UNKNOWN"}}
 
         with pytest.raises(QueryError, match="Unexpected frame type"):
             await conn.query("MATCH (n) RETURN n")
@@ -749,7 +748,7 @@ class TestConnectionExplain:
             }
         }
 
-        plan = await conn.explain(
+        _plan = await conn.explain(  # noqa: F841 - call needed to verify args
             "MATCH (n {name: $name}) RETURN n",
             params={"name": "Alice"},
         )
@@ -818,7 +817,7 @@ class TestConnectionProfile:
             }
         }
 
-        profile = await conn.profile(
+        _profile = await conn.profile(  # noqa: F841 - call needed to verify args
             "MATCH (n {name: $name}) RETURN n",
             params={"name": "Alice"},
         )
@@ -844,10 +843,12 @@ class TestConnectionBatch:
         mock_page = Page(columns=[], rows=[], final=True)
         conn.query.return_value = (mock_page, lambda: None)
 
-        results = await conn.batch([
-            ("CREATE (n:Person)", None),
-            ("CREATE (n:Company)", None),
-        ])
+        results = await conn.batch(
+            [
+                ("CREATE (n:Person)", None),
+                ("CREATE (n:Company)", None),
+            ]
+        )
 
         assert len(results) == 2
         assert all(r.success for r in results)
@@ -862,11 +863,14 @@ class TestConnectionBatch:
             QueryError("Second query failed"),
         ]
 
-        results = await conn.batch([
-            ("CREATE (n:Person)", None),
-            ("INVALID QUERY", None),
-            ("CREATE (n:Company)", None),
-        ], stop_on_error=True)
+        results = await conn.batch(
+            [
+                ("CREATE (n:Person)", None),
+                ("INVALID QUERY", None),
+                ("CREATE (n:Company)", None),
+            ],
+            stop_on_error=True,
+        )
 
         assert len(results) == 3
         assert results[0].success is True
@@ -886,11 +890,14 @@ class TestConnectionBatch:
             (mock_page, lambda: None),
         ]
 
-        results = await conn.batch([
-            ("CREATE (n:Person)", None),
-            ("INVALID QUERY", None),
-            ("CREATE (n:Company)", None),
-        ], stop_on_error=False)
+        results = await conn.batch(
+            [
+                ("CREATE (n:Person)", None),
+                ("INVALID QUERY", None),
+                ("CREATE (n:Company)", None),
+            ],
+            stop_on_error=False,
+        )
 
         assert len(results) == 3
         assert results[0].success is True
@@ -924,7 +931,9 @@ class TestConnectionExecute:
 
         await conn.execute("CREATE (n:Person)", {"name": "Alice"})
 
-        conn.query.assert_called_once_with("CREATE (n:Person)", {"name": "Alice"}, page_size=0)
+        conn.query.assert_called_once_with(
+            "CREATE (n:Person)", {"name": "Alice"}, page_size=0
+        )
 
 
 class TestClient:

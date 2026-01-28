@@ -5,7 +5,8 @@ Demonstrates all features of the Python QUIC client.
 """
 
 import asyncio
-from geode_client import Client, AuthClient, ConnectionPool, QueryBuilder
+
+from geode_client import AuthClient, Client, ConnectionPool, QueryBuilder
 
 
 async def basic_connection_example():
@@ -21,7 +22,7 @@ async def basic_connection_example():
 
         # Simple query
         page, _ = await conn.query("RETURN 1 AS x, 'Hello QUIC' AS greeting")
-        print(f"\nSimple query results:")
+        print("\nSimple query results:")
         for row in page.rows:
             x = row["x"].as_int
             greeting = row["greeting"].as_string
@@ -37,11 +38,7 @@ async def parameterized_queries():
     async with client.connection() as conn:
         # Query with parameters
         query = "RETURN $name AS name, $age AS age, $active AS active"
-        params = {
-            "name": "Alice",
-            "age": 30,
-            "active": True
-        }
+        params = {"name": "Alice", "age": 30, "active": True}
 
         page, _ = await conn.query(query, params)
         print("Parameterized query results:")
@@ -66,14 +63,13 @@ async def transaction_example():
         try:
             # Execute multiple operations
             await conn.execute(
-                "CREATE (p:Person {name: $name, age: $age})",
-                {"name": "Bob", "age": 25}
+                "CREATE (p:Person {name: $name, age: $age})", {"name": "Bob", "age": 25}
             )
             print("  Created person: Bob")
 
             await conn.execute(
                 "CREATE (p:Person {name: $name, age: $age})",
-                {"name": "Charlie", "age": 35}
+                {"name": "Charlie", "age": 35},
             )
             print("  Created person: Charlie")
 
@@ -163,7 +159,7 @@ async def authentication_example():
                 email="test@example.com",
                 password="secure_password123",
                 roles=["user"],
-                metadata={"department": "engineering"}
+                metadata={"department": "engineering"},
             )
             print(f"Created user: {user.username} (ID: {user.id})")
 
@@ -176,9 +172,7 @@ async def authentication_example():
 
             # Check permission
             has_perm = await auth.check_permission(
-                user_id=user.id,
-                resource="data",
-                action="read"
+                user_id=user.id, resource="data", action="read"
             )
             print(f"  Has read permission: {has_perm}")
 
@@ -196,11 +190,7 @@ async def connection_pool_example():
 
     # Create pool
     pool = ConnectionPool(
-        host="127.0.0.1",
-        port=8443,
-        min_size=2,
-        max_size=10,
-        skip_verify=True
+        host="127.0.0.1", port=8443, min_size=2, max_size=10, skip_verify=True
     )
 
     async with pool:
@@ -216,9 +206,7 @@ async def connection_pool_example():
                 return result_id
 
         print("\nExecuting 5 concurrent queries:")
-        results = await asyncio.gather(*[
-            execute_query(i) for i in range(1, 6)
-        ])
+        results = await asyncio.gather(*[execute_query(i) for i in range(1, 6)])
 
         print(f"\nAll results: {results}")
         print(f"Pool status: size={pool.size}, available={pool.available}")
@@ -292,6 +280,7 @@ async def main():
     except Exception as e:
         print(f"\nError running examples: {e}")
         import traceback
+
         traceback.print_exc()
 
 

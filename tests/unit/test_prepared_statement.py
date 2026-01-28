@@ -2,18 +2,19 @@
 Unit tests for PreparedStatement and related features.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from geode_client import (
+    BatchResult,
+    GeodeError,
+    Page,
+    PlanOperation,
     PreparedStatement,
+    QueryError,
     QueryPlan,
     QueryProfile,
-    PlanOperation,
-    BatchResult,
-    Page,
-    Column,
-    GeodeError,
-    QueryError,
 )
 
 
@@ -22,9 +23,7 @@ class TestPreparedStatement:
 
     def test_extract_parameters_simple(self):
         """Extract single parameter from query."""
-        params = PreparedStatement.extract_parameters(
-            "MATCH (n {id: $id}) RETURN n"
-        )
+        params = PreparedStatement.extract_parameters("MATCH (n {id: $id}) RETURN n")
         assert params == ["id"]
 
     def test_extract_parameters_multiple(self):
@@ -43,9 +42,7 @@ class TestPreparedStatement:
 
     def test_extract_parameters_none(self):
         """Query without parameters should return empty list."""
-        params = PreparedStatement.extract_parameters(
-            "MATCH (n:Person) RETURN n"
-        )
+        params = PreparedStatement.extract_parameters("MATCH (n:Person) RETURN n")
         assert params == []
 
     def test_extract_parameters_underscore(self):
@@ -130,9 +127,7 @@ class TestPreparedStatement:
 
         await stmt.execute(page_size=500)
 
-        conn.query.assert_called_once_with(
-            "MATCH (n) RETURN n", None, 500
-        )
+        conn.query.assert_called_once_with("MATCH (n) RETURN n", None, 500)
 
     @pytest.mark.asyncio
     async def test_execute_after_close_raises(self):
@@ -358,9 +353,7 @@ class TestConnectionPrepare:
         # We don't actually connect - just test the prepare logic
 
         with patch.object(conn, "_connected", True):
-            stmt = await conn.prepare(
-                "MATCH (n {id: $id, name: $name}) RETURN n"
-            )
+            stmt = await conn.prepare("MATCH (n {id: $id, name: $name}) RETURN n")
 
             assert stmt.parameters == ["id", "name"]
             assert stmt.query == "MATCH (n {id: $id, name: $name}) RETURN n"
@@ -385,8 +378,9 @@ class TestConnectionExplain:
     @pytest.mark.asyncio
     async def test_explain_parses_response(self):
         """Explain should parse server response into QueryPlan."""
-        from geode_client.client import Connection
         import asyncio
+
+        from geode_client.client import Connection
 
         conn = Connection(host="localhost", port=3141)
         conn._connected = True
@@ -422,8 +416,9 @@ class TestConnectionExplain:
     @pytest.mark.asyncio
     async def test_explain_handles_error(self):
         """Explain should raise QueryError on error response."""
-        from geode_client.client import Connection
         import asyncio
+
+        from geode_client.client import Connection
 
         conn = Connection(host="localhost", port=3141)
         conn._connected = True
@@ -450,8 +445,9 @@ class TestConnectionProfile:
     @pytest.mark.asyncio
     async def test_profile_parses_response(self):
         """Profile should parse server response into QueryProfile."""
-        from geode_client.client import Connection
         import asyncio
+
+        from geode_client.client import Connection
 
         conn = Connection(host="localhost", port=3141)
         conn._connected = True
