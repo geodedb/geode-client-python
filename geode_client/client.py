@@ -663,6 +663,17 @@ class Connection:
             return {}
         return json.loads(line)
 
+    def _try_read_json_from_buffer(self) -> Optional[Dict[str, Any]]:
+        """Attempt to parse a buffered JSON line without blocking."""
+        newline_idx = self._buffer.find(b"\n")
+        if newline_idx == -1:
+            return None
+        line = self._buffer[:newline_idx]
+        self._buffer = self._buffer[newline_idx + 1 :]
+        if not line:
+            return None
+        return json.loads(line)
+
     async def begin(self) -> None:
         """Begin a transaction."""
         async with self._lock:
@@ -771,6 +782,64 @@ class Connection:
                 for col in result.get("columns", [])
             ]
             type_map = {col.name: col.type for col in columns}
+
+            # Inline RUN+PULL: check if a bindings frame already arrived in buffer.
+            inline_frame = self._try_read_json_from_buffer()
+            if inline_frame:
+                inline_result = inline_frame.get("result", {})
+                inline_type = inline_result.get("type")
+
+                if inline_type == "ERROR":
+                    code = inline_result.get("code", "UNKNOWN")
+                    message = inline_result.get("message", "Query failed")
+                    raise QueryError(f"{code}: {message}")
+
+                if inline_type == "PROFILE":
+                    first_page = Page(
+                        columns=columns,
+                        rows=[],
+                        ordered=False,
+                        final=True,
+                    )
+
+                    async def empty_pager():
+                        return
+                        yield
+
+                    return first_page, empty_pager
+
+                if inline_type == "RESULT":
+                    first_page = Page(
+                        columns=columns,
+                        rows=self._parse_rows(inline_result.get("rows", []), type_map),
+                        ordered=inline_result.get("ordered", False),
+                        order_keys=inline_result.get("order_keys", []),
+                        final=True,
+                    )
+
+                    async def empty_pager():
+                        if False:
+                            yield
+
+                    return first_page, empty_pager
+
+                if inline_type != "BINDINGS":
+                    raise QueryError(f"Unexpected inline frame type: {inline_type}")
+
+                rows = self._parse_rows(inline_result.get("rows", []), type_map)
+                first_page = Page(
+                    columns=columns,
+                    rows=rows,
+                    ordered=inline_result.get("ordered", False),
+                    order_keys=inline_result.get("order_keys", []),
+                    final=inline_result.get("final", True),
+                )
+
+                async def empty_pager():
+                    if False:
+                        yield
+
+                return first_page, empty_pager
 
             # Send PULL to get first page
             await self._write_json(

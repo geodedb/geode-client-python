@@ -461,6 +461,30 @@ The QUIC client provides excellent performance characteristics:
 - **Set appropriate page sizes** based on result set size
 - **Reuse QueryBuilder patterns** instead of creating new instances
 
+### System-Level QUIC Optimizations
+
+For optimal QUIC throughput on high-bandwidth connections, configure UDP buffer sizes at the OS level.
+
+**Linux:**
+```bash
+# Increase UDP buffer sizes to 7MB
+sudo sysctl -w net.core.rmem_max=7340032
+sudo sysctl -w net.core.wmem_max=7340032
+
+# Persist across reboots
+echo "net.core.rmem_max=7340032" | sudo tee -a /etc/sysctl.d/99-geode-quic.conf
+echo "net.core.wmem_max=7340032" | sudo tee -a /etc/sysctl.d/99-geode-quic.conf
+```
+
+**BSD/macOS:**
+```bash
+sudo sysctl -w kern.ipc.maxsockbuf=8441037
+```
+
+**GSO (Generic Segmentation Offload)**: Automatically enabled on Linux 4.18+ by aioquic. To disable (not recommended), set `QUIC_GO_DISABLE_GSO=true`.
+
+**Path MTU Discovery**: Enabled by default, probes for optimal packet sizes.
+
 ```python
 # Good: Reuse pattern with different parameters
 pattern = QueryBuilder().match("(n:Person)").where("n.id = $id").return_("n")
