@@ -425,6 +425,122 @@ class TestPoolSizeValidation:
             validate.pool_size(True, 10)  # type: ignore
 
 
+class TestEmailValidation:
+    """Tests for email validation."""
+
+    def test_valid_email(self):
+        """Valid email addresses should pass."""
+        assert validate.email("user@example.com") == "user@example.com"
+        assert validate.email("test.user@domain.org") == "test.user@domain.org"
+        assert validate.email("User+Tag@Example.COM") == "user+tag@example.com"
+
+    def test_empty_email_raises(self):
+        """Empty email should raise ValidationError."""
+        with pytest.raises(ValidationError, match="cannot be empty"):
+            validate.email("")
+
+    def test_none_email_raises(self):
+        """None email should raise ValidationError."""
+        with pytest.raises(ValidationError, match="must be a string"):
+            validate.email(None)  # type: ignore
+
+    def test_invalid_email_format_raises(self):
+        """Invalid email formats should raise ValidationError."""
+        with pytest.raises(ValidationError, match="Invalid email format"):
+            validate.email("notanemail")
+        with pytest.raises(ValidationError, match="Invalid email format"):
+            validate.email("missing@")
+        with pytest.raises(ValidationError, match="Invalid email format"):
+            validate.email("@nodomain.com")
+
+    def test_email_too_long_raises(self):
+        """Email exceeding max length should raise ValidationError."""
+        long_email = "a" * 310 + "@example.com"  # 322 chars > 320 max
+        with pytest.raises(ValidationError, match="too long"):
+            validate.email(long_email)
+
+    def test_email_whitespace_stripped(self):
+        """Email should be stripped of whitespace."""
+        assert validate.email("  user@example.com  ") == "user@example.com"
+
+
+class TestPaginationLimitValidation:
+    """Tests for pagination limit validation."""
+
+    def test_valid_limit(self):
+        """Valid limit values should pass."""
+        assert validate.pagination_limit(1) == 1
+        assert validate.pagination_limit(100) == 100
+        assert validate.pagination_limit(10000) == 10000
+
+    def test_limit_zero_raises(self):
+        """Zero limit should raise ValidationError."""
+        with pytest.raises(ValidationError, match="at least"):
+            validate.pagination_limit(0)
+
+    def test_limit_negative_raises(self):
+        """Negative limit should raise ValidationError."""
+        with pytest.raises(ValidationError, match="at least"):
+            validate.pagination_limit(-1)
+
+    def test_limit_too_high_raises(self):
+        """Limit exceeding max should raise ValidationError."""
+        with pytest.raises(ValidationError, match="at most"):
+            validate.pagination_limit(10001)
+
+    def test_custom_min_max_limit(self):
+        """Custom min/max should be respected."""
+        assert validate.pagination_limit(50, min_value=10, max_value=100) == 50
+        with pytest.raises(ValidationError, match="at least"):
+            validate.pagination_limit(5, min_value=10, max_value=100)
+
+    def test_non_integer_limit_raises(self):
+        """Non-integer limit should raise ValidationError."""
+        with pytest.raises(ValidationError, match="must be an integer"):
+            validate.pagination_limit("100")  # type: ignore
+
+    def test_bool_limit_raises(self):
+        """Boolean limit should raise ValidationError."""
+        with pytest.raises(ValidationError, match="must be an integer"):
+            validate.pagination_limit(True)  # type: ignore
+
+
+class TestPaginationOffsetValidation:
+    """Tests for pagination offset validation."""
+
+    def test_valid_offset(self):
+        """Valid offset values should pass."""
+        assert validate.pagination_offset(0) == 0
+        assert validate.pagination_offset(100) == 100
+        assert validate.pagination_offset(1000000) == 1000000
+
+    def test_offset_negative_raises(self):
+        """Negative offset should raise ValidationError."""
+        with pytest.raises(ValidationError, match="non-negative"):
+            validate.pagination_offset(-1)
+
+    def test_offset_too_high_raises(self):
+        """Offset exceeding max should raise ValidationError."""
+        with pytest.raises(ValidationError, match="at most"):
+            validate.pagination_offset(1000001)
+
+    def test_custom_max_offset(self):
+        """Custom max should be respected."""
+        assert validate.pagination_offset(500, max_value=1000) == 500
+        with pytest.raises(ValidationError, match="at most"):
+            validate.pagination_offset(1001, max_value=1000)
+
+    def test_non_integer_offset_raises(self):
+        """Non-integer offset should raise ValidationError."""
+        with pytest.raises(ValidationError, match="must be an integer"):
+            validate.pagination_offset("100")  # type: ignore
+
+    def test_bool_offset_raises(self):
+        """Boolean offset should raise ValidationError."""
+        with pytest.raises(ValidationError, match="must be an integer"):
+            validate.pagination_offset(True)  # type: ignore
+
+
 class TestValidationErrorInheritance:
     """Tests for ValidationError."""
 

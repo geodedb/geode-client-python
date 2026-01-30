@@ -2,13 +2,45 @@
 Authentication and authorization client for Geode.
 
 Provides full RBAC, user management, and RLS policy support.
+
+Security Notes:
+    - Credentials are transmitted over TLS. Ensure skip_verify=False in production.
+    - Client-side rate limiting is implemented to protect against brute force attacks.
+    - Server-side rate limiting should also be configured for defense in depth.
+
+Rate Limiting Limitations:
+    The client-side rate limiting implemented in this module has inherent limitations:
+
+    1. Per-Instance: Rate limiting state is stored per AuthClient instance. Creating
+       a new AuthClient instance resets the counter, allowing bypass.
+
+    2. Client-Side: Sophisticated attackers can modify or disable client-side checks
+       entirely by using their own client implementation.
+
+    3. Memory-Only: Rate limit state is not persisted. Restarting the application
+       clears all lockouts.
+
+    For these reasons, client-side rate limiting should be considered a convenience
+    feature that provides basic protection against accidental brute force attempts
+    (e.g., scripts in a loop). It is NOT a substitute for server-side rate limiting.
+
+    Always ensure the Geode server has proper rate limiting configured for
+    authentication endpoints.
 """
 
+import warnings
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from .client import Connection, AuthError
+from .client import Connection, AuthError, SecurityWarning
+from . import validate
+
+
+# Rate limiting configuration
+_DEFAULT_MAX_ATTEMPTS = 5
+_DEFAULT_LOCKOUT_DURATION = timedelta(minutes=15)
+_DEFAULT_ATTEMPT_WINDOW = timedelta(minutes=5)
 
 
 @dataclass
@@ -81,16 +113,80 @@ class AuthClient:
     Authentication and authorization client.
 
     Provides methods for user management, RBAC, and RLS policies.
+
+    Rate Limiting:
+        Client-side rate limiting is implemented to protect against brute force
+        attacks. After max_attempts failed login attempts within attempt_window,
+        the client will block further attempts for lockout_duration.
+
+        **Important Limitations**: Client-side rate limiting is per-instance only.
+        Attackers can bypass it by creating new AuthClient instances. This feature
+        provides basic protection against accidental brute force (e.g., scripts in
+        a loop) but is NOT a substitute for server-side rate limiting. Always ensure
+        the Geode server has proper rate limiting configured.
     """
 
-    def __init__(self, conn: Connection):
+    def __init__(
+        self,
+        conn: Connection,
+        max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
+        lockout_duration: timedelta = _DEFAULT_LOCKOUT_DURATION,
+        attempt_window: timedelta = _DEFAULT_ATTEMPT_WINDOW,
+    ):
         """
         Initialize auth client with a connection.
 
         Args:
             conn: Active connection to Geode server
+            max_attempts: Maximum failed login attempts before lockout
+            lockout_duration: How long to lock out after max attempts
+            attempt_window: Time window for counting failed attempts
         """
         self.conn = conn
+        self._max_attempts = max_attempts
+        self._lockout_duration = lockout_duration
+        self._attempt_window = attempt_window
+        self._failed_attempts: List[datetime] = []
+        self._lockout_until: Optional[datetime] = None
+
+    def _check_rate_limit(self) -> None:
+        """
+        Check if rate limit has been exceeded.
+
+        Raises:
+            AuthError: If currently locked out due to too many failed attempts
+        """
+        now = datetime.now()
+
+        # Check if currently locked out
+        if self._lockout_until and now < self._lockout_until:
+            remaining = (self._lockout_until - now).total_seconds()
+            raise AuthError(
+                f"Too many failed login attempts. Try again in {int(remaining)} seconds."
+            )
+
+        # Clear expired lockout
+        if self._lockout_until and now >= self._lockout_until:
+            self._lockout_until = None
+            self._failed_attempts.clear()
+
+        # Clean up old attempts outside the window
+        cutoff = now - self._attempt_window
+        self._failed_attempts = [t for t in self._failed_attempts if t > cutoff]
+
+    def _record_failed_attempt(self) -> None:
+        """Record a failed login attempt and apply lockout if threshold reached."""
+        now = datetime.now()
+        self._failed_attempts.append(now)
+
+        if len(self._failed_attempts) >= self._max_attempts:
+            self._lockout_until = now + self._lockout_duration
+            self._failed_attempts.clear()
+
+    def _record_successful_login(self) -> None:
+        """Clear failed attempts on successful login."""
+        self._failed_attempts.clear()
+        self._lockout_until = None
 
     async def login(self, username: str, password: str) -> SessionInfo:
         """
@@ -104,8 +200,25 @@ class AuthClient:
             SessionInfo with token and user details
 
         Raises:
-            AuthError: If authentication fails
+            AuthError: If authentication fails or rate limit exceeded
+
+        Security:
+            - Credentials are transmitted over TLS. If TLS verification is
+              disabled, a warning will be emitted.
+            - Client-side rate limiting protects against brute force attacks.
         """
+        # Warn if TLS verification is disabled
+        if hasattr(self.conn, "skip_verify") and self.conn.skip_verify:
+            warnings.warn(
+                "Transmitting credentials with TLS verification disabled. "
+                "This is insecure and credentials may be intercepted.",
+                SecurityWarning,
+                stacklevel=2,
+            )
+
+        # Check rate limit before attempting login
+        self._check_rate_limit()
+
         req = {
             "type": "AUTH_LOGIN",
             "username": username,
@@ -118,8 +231,12 @@ class AuthClient:
 
         status = resp.get("status", "")
         if status != "00000":
+            self._record_failed_attempt()
             message = resp.get("message", "Login failed")
             raise AuthError(f"Login failed: {message}")
+
+        # Record successful login to clear failed attempts
+        self._record_successful_login()
 
         result = resp.get("result", {})
 
@@ -173,8 +290,8 @@ class AuthClient:
         Create a new user.
 
         Args:
-            username: Username
-            email: Email address
+            username: Username (must be a valid identifier)
+            email: Email address (must be valid email format)
             password: Password
             roles: List of role names
             metadata: Additional metadata
@@ -184,11 +301,16 @@ class AuthClient:
 
         Raises:
             AuthError: If user creation fails
+            ValidationError: If username or email format is invalid
         """
+        # Validate inputs
+        validated_username = validate.identifier(username)
+        validated_email = validate.email(email)
+
         req = {
             "type": "AUTH_CREATE_USER",
-            "username": username,
-            "email": email,
+            "username": validated_username,
+            "email": validated_email,
             "password": password,
         }
 
@@ -246,7 +368,7 @@ class AuthClient:
 
         Args:
             user_id: User ID
-            email: New email address
+            email: New email address (must be valid email format if provided)
             is_active: Active status
             roles: New roles list
             metadata: Updated metadata
@@ -256,6 +378,7 @@ class AuthClient:
 
         Raises:
             AuthError: If update fails
+            ValidationError: If email format is invalid
         """
         req = {
             "type": "AUTH_UPDATE_USER",
@@ -263,7 +386,8 @@ class AuthClient:
         }
 
         if email is not None:
-            req["email"] = email
+            validated_email = validate.email(email)
+            req["email"] = validated_email
         if is_active is not None:
             req["is_active"] = is_active
         if roles is not None:
@@ -318,19 +442,24 @@ class AuthClient:
         List all users.
 
         Args:
-            limit: Maximum number of users to return
-            offset: Offset for pagination
+            limit: Maximum number of users to return (1-10000)
+            offset: Offset for pagination (non-negative)
 
         Returns:
             List of User objects
 
         Raises:
             AuthError: If operation fails
+            ValidationError: If limit or offset is invalid
         """
+        # Validate pagination parameters
+        validated_limit = validate.pagination_limit(limit)
+        validated_offset = validate.pagination_offset(offset)
+
         req = {
             "type": "AUTH_LIST_USERS",
-            "limit": limit,
-            "offset": offset,
+            "limit": validated_limit,
+            "offset": validated_offset,
         }
 
         async with self.conn._lock:
@@ -358,7 +487,7 @@ class AuthClient:
         Create a new role.
 
         Args:
-            name: Role name
+            name: Role name (must be a valid identifier)
             description: Role description
             permissions: List of permission names
             parent_role: Parent role ID for inheritance
@@ -369,10 +498,14 @@ class AuthClient:
 
         Raises:
             AuthError: If role creation fails
+            ValidationError: If role name is not a valid identifier
         """
+        # Validate role name
+        validated_name = validate.identifier(name)
+
         req = {
             "type": "AUTH_CREATE_ROLE",
-            "name": name,
+            "name": validated_name,
             "description": description,
             "permissions": permissions,
             "priority": priority,

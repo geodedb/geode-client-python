@@ -18,7 +18,10 @@ from geode_client import Client, ConnectionPool
 
 
 # Test configuration
-GEODE_IMAGE = "registry.gitlab.com/devnw/geode/geode:latest"
+# SEC-024: Pin Geode server image to specific version (not :latest)
+# Update this version when new Geode releases are published
+GEODE_VERSION = os.environ.get("GEODE_VERSION", "v0.1.0")
+GEODE_IMAGE = f"registry.gitlab.com/devnw/geode/geode:{GEODE_VERSION}"
 DEFAULT_GEODE_PORT = 3141
 CONTAINER_STARTUP_TIMEOUT = 60  # seconds
 CONTAINER_NAME = "geode-python-test"

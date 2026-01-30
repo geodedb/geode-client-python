@@ -1,8 +1,14 @@
 """
 Advanced example demonstrating authentication, query builders, and connection pooling.
+
+Note: For authentication examples, set environment variables:
+  - GEODE_TEST_USERNAME: Username for testing (default: testuser)
+  - GEODE_TEST_PASSWORD: Password for testing (REQUIRED - no default for security)
+  - GEODE_TEST_EMAIL: Email for testing (default: test@example.com)
 """
 
 import asyncio
+import os
 from geode_client import (
     ConnectionPool,
     QueryBuilder,
@@ -144,20 +150,31 @@ async def auth_example():
     async with client.connection() as conn:
         auth = AuthClient(conn)
 
+        # Get credentials from environment variables (never hardcode in production)
+        test_username = os.environ.get("GEODE_TEST_USERNAME", "testuser")
+        test_password = os.environ.get("GEODE_TEST_PASSWORD")
+        test_email = os.environ.get("GEODE_TEST_EMAIL", "test@example.com")
+
+        if not test_password:
+            print("ERROR: GEODE_TEST_PASSWORD environment variable is required")
+            print("Set it with: export GEODE_TEST_PASSWORD='your-secure-password'")
+            return
+
         try:
             # Create user
             user = await auth.create_user(
-                username="testuser",
-                email="test@example.com",
-                password="securepassword123",
+                username=test_username,
+                email=test_email,
+                password=test_password,
                 roles=["user"],
                 metadata={"department": "engineering"},
             )
             print(f"Created user: {user.username} (ID: {user.id})")
 
             # Login
-            session = await auth.login("testuser", "securepassword123")
-            print(f"Logged in: {session.username}, token: {session.token[:20]}...")
+            session = await auth.login(test_username, test_password)
+            print(f"Logged in: {session.username}")
+            # Note: Never log or print session tokens in production code
 
             # Create role
             role = await auth.create_role(

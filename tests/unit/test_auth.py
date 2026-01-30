@@ -2,7 +2,8 @@
 
 import asyncio
 import pytest
-from datetime import datetime
+import warnings
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from geode_client.auth import (
@@ -12,8 +13,11 @@ from geode_client.auth import (
     Permission,
     RLSPolicy,
     SessionInfo,
+    _DEFAULT_MAX_ATTEMPTS,
+    _DEFAULT_LOCKOUT_DURATION,
+    _DEFAULT_ATTEMPT_WINDOW,
 )
-from geode_client.client import AuthError
+from geode_client.client import AuthError, SecurityWarning
 
 
 class TestDataclasses:
@@ -476,6 +480,75 @@ class TestAuthClientUserManagement:
         with pytest.raises(AuthError, match="List users failed"):
             await client.list_users()
 
+    @pytest.mark.asyncio
+    async def test_create_user_validates_username(self):
+        """Test that create_user validates username as identifier."""
+        from geode_client.validate import ValidationError
+
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        client = AuthClient(mock_conn)
+
+        with pytest.raises(ValidationError, match="Invalid identifier"):
+            await client.create_user("invalid-user", "test@example.com", "pass")
+
+        with pytest.raises(ValidationError, match="cannot be empty"):
+            await client.create_user("", "test@example.com", "pass")
+
+    @pytest.mark.asyncio
+    async def test_create_user_validates_email(self):
+        """Test that create_user validates email format."""
+        from geode_client.validate import ValidationError
+
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        client = AuthClient(mock_conn)
+
+        with pytest.raises(ValidationError, match="Invalid email format"):
+            await client.create_user("testuser", "notanemail", "pass")
+
+        with pytest.raises(ValidationError, match="Invalid email format"):
+            await client.create_user("testuser", "missing@", "pass")
+
+    @pytest.mark.asyncio
+    async def test_update_user_validates_email(self):
+        """Test that update_user validates email format when provided."""
+        from geode_client.validate import ValidationError
+
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        client = AuthClient(mock_conn)
+
+        with pytest.raises(ValidationError, match="Invalid email format"):
+            await client.update_user(1, email="notanemail")
+
+    @pytest.mark.asyncio
+    async def test_list_users_validates_limit(self):
+        """Test that list_users validates limit parameter."""
+        from geode_client.validate import ValidationError
+
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        client = AuthClient(mock_conn)
+
+        with pytest.raises(ValidationError, match="at least"):
+            await client.list_users(limit=0)
+
+        with pytest.raises(ValidationError, match="at most"):
+            await client.list_users(limit=20000)
+
+    @pytest.mark.asyncio
+    async def test_list_users_validates_offset(self):
+        """Test that list_users validates offset parameter."""
+        from geode_client.validate import ValidationError
+
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        client = AuthClient(mock_conn)
+
+        with pytest.raises(ValidationError, match="non-negative"):
+            await client.list_users(offset=-1)
+
 
 class TestAuthClientRoleManagement:
     """Test AuthClient role management methods."""
@@ -582,6 +655,21 @@ class TestAuthClientRoleManagement:
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Delete role failed"):
             await client.delete_role(1)
+
+    @pytest.mark.asyncio
+    async def test_create_role_validates_name(self):
+        """Test that create_role validates role name as identifier."""
+        from geode_client.validate import ValidationError
+
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        client = AuthClient(mock_conn)
+
+        with pytest.raises(ValidationError, match="Invalid identifier"):
+            await client.create_role("invalid-role", "Description", ["read"])
+
+        with pytest.raises(ValidationError, match="cannot be empty"):
+            await client.create_role("", "Description", ["read"])
 
 
 class TestAuthClientPermissionManagement:
@@ -910,3 +998,302 @@ class TestAuthClientHelpers:
         assert role.parent_role is None
         assert role.is_system is False
         assert role.priority == 0
+
+
+class TestAuthClientRateLimiting:
+    """Test AuthClient rate limiting functionality."""
+
+    def test_rate_limit_defaults(self):
+        """Test default rate limit configuration."""
+        mock_conn = MagicMock()
+        client = AuthClient(mock_conn)
+
+        assert client._max_attempts == _DEFAULT_MAX_ATTEMPTS
+        assert client._lockout_duration == _DEFAULT_LOCKOUT_DURATION
+        assert client._attempt_window == _DEFAULT_ATTEMPT_WINDOW
+        assert client._failed_attempts == []
+        assert client._lockout_until is None
+
+    def test_rate_limit_custom_config(self):
+        """Test custom rate limit configuration."""
+        mock_conn = MagicMock()
+        client = AuthClient(
+            mock_conn,
+            max_attempts=3,
+            lockout_duration=timedelta(minutes=5),
+            attempt_window=timedelta(minutes=1),
+        )
+
+        assert client._max_attempts == 3
+        assert client._lockout_duration == timedelta(minutes=5)
+        assert client._attempt_window == timedelta(minutes=1)
+
+    @pytest.mark.asyncio
+    async def test_login_records_failed_attempt(self):
+        """Test that failed login records an attempt."""
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        mock_conn._write_json = AsyncMock()
+        mock_conn._read_json = AsyncMock(return_value={
+            "status": "ERROR",
+            "message": "Invalid credentials",
+        })
+
+        client = AuthClient(mock_conn)
+        assert len(client._failed_attempts) == 0
+
+        with pytest.raises(AuthError):
+            await client.login("user", "wrongpass")
+
+        assert len(client._failed_attempts) == 1
+
+    @pytest.mark.asyncio
+    async def test_login_clears_attempts_on_success(self):
+        """Test that successful login clears failed attempts."""
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        mock_conn._write_json = AsyncMock()
+
+        # First fail a login
+        mock_conn._read_json = AsyncMock(return_value={
+            "status": "ERROR",
+            "message": "Invalid credentials",
+        })
+
+        client = AuthClient(mock_conn)
+        with pytest.raises(AuthError):
+            await client.login("user", "wrongpass")
+
+        assert len(client._failed_attempts) == 1
+
+        # Now succeed
+        mock_conn._read_json = AsyncMock(return_value={
+            "status": "00000",
+            "result": {
+                "token": "test_token",
+                "user_id": 1,
+                "username": "user",
+                "expires_at": "2026-12-31T23:59:59Z",
+                "roles": [],
+            }
+        })
+
+        await client.login("user", "correctpass")
+        assert len(client._failed_attempts) == 0
+        assert client._lockout_until is None
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_lockout_after_max_attempts(self):
+        """Test lockout after exceeding max attempts."""
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        mock_conn._write_json = AsyncMock()
+        mock_conn._read_json = AsyncMock(return_value={
+            "status": "ERROR",
+            "message": "Invalid credentials",
+        })
+
+        client = AuthClient(mock_conn, max_attempts=3)
+
+        # Fail 3 times
+        for _ in range(3):
+            with pytest.raises(AuthError, match="Login failed"):
+                await client.login("user", "wrongpass")
+
+        # 4th attempt should be blocked by rate limit
+        with pytest.raises(AuthError, match="Too many failed login attempts"):
+            await client.login("user", "wrongpass")
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_expires(self):
+        """Test that lockout expires after duration."""
+        mock_conn = MagicMock()
+        mock_conn._lock = asyncio.Lock()
+        mock_conn._write_json = AsyncMock()
+        mock_conn._read_json = AsyncMock(return_value={
+            "status": "ERROR",
+            "message": "Invalid credentials",
+        })
+
+        # Use very short lockout for testing
+        client = AuthClient(
+            mock_conn,
+            max_attempts=2,
+            lockout_duration=timedelta(milliseconds=1),
+        )
+
+        # Fail twice to trigger lockout
+        for _ in range(2):
+            with pytest.raises(AuthError, match="Login failed"):
+                await client.login("user", "wrongpass")
+
+        # Wait for lockout to expire
+        import time
+        time.sleep(0.01)  # 10ms > 1ms lockout
+
+        # Should be able to attempt again (will fail but not due to rate limit)
+        with pytest.raises(AuthError, match="Login failed"):
+            await client.login("user", "wrongpass")
+
+    def test_check_rate_limit_no_lockout(self):
+        """Test _check_rate_limit when not locked out."""
+        mock_conn = MagicMock()
+        client = AuthClient(mock_conn)
+        # Should not raise
+        client._check_rate_limit()
+
+    def test_check_rate_limit_during_lockout(self):
+        """Test _check_rate_limit during active lockout."""
+        mock_conn = MagicMock()
+        client = AuthClient(mock_conn)
+        client._lockout_until = datetime.now() + timedelta(minutes=5)
+
+        with pytest.raises(AuthError, match="Too many failed login attempts"):
+            client._check_rate_limit()
+
+    def test_check_rate_limit_clears_expired_lockout(self):
+        """Test _check_rate_limit clears expired lockout."""
+        mock_conn = MagicMock()
+        client = AuthClient(mock_conn)
+        client._lockout_until = datetime.now() - timedelta(seconds=1)
+        client._failed_attempts = [datetime.now()]
+
+        # Should not raise and should clear state
+        client._check_rate_limit()
+        assert client._lockout_until is None
+        assert client._failed_attempts == []
+
+    def test_check_rate_limit_cleans_old_attempts(self):
+        """Test _check_rate_limit removes old attempts outside window."""
+        mock_conn = MagicMock()
+        client = AuthClient(mock_conn, attempt_window=timedelta(minutes=1))
+
+        # Add old attempt outside window
+        old_attempt = datetime.now() - timedelta(minutes=2)
+        client._failed_attempts = [old_attempt]
+
+        client._check_rate_limit()
+        assert len(client._failed_attempts) == 0
+
+    def test_record_failed_attempt(self):
+        """Test _record_failed_attempt adds timestamp."""
+        mock_conn = MagicMock()
+        client = AuthClient(mock_conn)
+
+        before = datetime.now()
+        client._record_failed_attempt()
+        after = datetime.now()
+
+        assert len(client._failed_attempts) == 1
+        assert before <= client._failed_attempts[0] <= after
+
+    def test_record_failed_attempt_triggers_lockout(self):
+        """Test _record_failed_attempt triggers lockout at max."""
+        mock_conn = MagicMock()
+        client = AuthClient(mock_conn, max_attempts=2)
+
+        client._record_failed_attempt()
+        assert client._lockout_until is None
+
+        client._record_failed_attempt()
+        assert client._lockout_until is not None
+        assert client._failed_attempts == []  # Cleared after lockout
+
+    def test_record_successful_login(self):
+        """Test _record_successful_login clears state."""
+        mock_conn = MagicMock()
+        client = AuthClient(mock_conn)
+        client._failed_attempts = [datetime.now(), datetime.now()]
+        client._lockout_until = datetime.now() + timedelta(minutes=5)
+
+        client._record_successful_login()
+
+        assert client._failed_attempts == []
+        assert client._lockout_until is None
+
+
+class TestAuthClientTLSWarning:
+    """Test TLS security warnings in AuthClient."""
+
+    @pytest.mark.asyncio
+    async def test_login_warns_when_skip_verify_true(self):
+        """Test that login emits warning when TLS verification is disabled."""
+        mock_conn = MagicMock()
+        mock_conn.skip_verify = True
+        mock_conn._lock = asyncio.Lock()
+        mock_conn._write_json = AsyncMock()
+        mock_conn._read_json = AsyncMock(return_value={
+            "status": "00000",
+            "result": {
+                "token": "test_token",
+                "user_id": 1,
+                "username": "alice",
+                "expires_at": "2026-12-31T23:59:59Z",
+                "roles": [],
+            }
+        })
+
+        client = AuthClient(mock_conn)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            await client.login("alice", "password")
+
+            # Check that SecurityWarning was raised
+            assert len(w) == 1
+            assert issubclass(w[0].category, SecurityWarning)
+            assert "TLS verification disabled" in str(w[0].message)
+
+    @pytest.mark.asyncio
+    async def test_login_no_warning_when_skip_verify_false(self):
+        """Test that login does not warn when TLS verification is enabled."""
+        mock_conn = MagicMock()
+        mock_conn.skip_verify = False
+        mock_conn._lock = asyncio.Lock()
+        mock_conn._write_json = AsyncMock()
+        mock_conn._read_json = AsyncMock(return_value={
+            "status": "00000",
+            "result": {
+                "token": "test_token",
+                "user_id": 1,
+                "username": "alice",
+                "expires_at": "2026-12-31T23:59:59Z",
+                "roles": [],
+            }
+        })
+
+        client = AuthClient(mock_conn)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            await client.login("alice", "password")
+
+            # Filter for SecurityWarning only
+            security_warnings = [x for x in w if issubclass(x.category, SecurityWarning)]
+            assert len(security_warnings) == 0
+
+    @pytest.mark.asyncio
+    async def test_login_no_warning_when_skip_verify_not_present(self):
+        """Test that login handles missing skip_verify attribute."""
+        mock_conn = MagicMock(spec=[])  # No skip_verify attribute
+        mock_conn._lock = asyncio.Lock()
+        mock_conn._write_json = AsyncMock()
+        mock_conn._read_json = AsyncMock(return_value={
+            "status": "00000",
+            "result": {
+                "token": "test_token",
+                "user_id": 1,
+                "username": "alice",
+                "expires_at": "2026-12-31T23:59:59Z",
+                "roles": [],
+            }
+        })
+
+        client = AuthClient(mock_conn)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            await client.login("alice", "password")
+
+            security_warnings = [x for x in w if issubclass(x.category, SecurityWarning)]
+            assert len(security_warnings) == 0

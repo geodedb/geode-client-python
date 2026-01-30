@@ -6,8 +6,9 @@ This client uses QUIC+TLS for all connections to Geode server.
 
 import asyncio
 import json
+import logging
 import os
-import sys
+import warnings
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
@@ -24,6 +25,20 @@ from aioquic.quic.events import (
 )
 
 from .types import Value, decode_value
+from . import validate
+
+# Module-level logger - users can configure logging level as needed
+logger = logging.getLogger(__name__)
+
+# Maximum line size for reading from server (16MB)
+# Protects against DoS via unbounded buffer growth from malicious servers
+MAX_LINE_SIZE = 16 * 1024 * 1024
+
+
+class SecurityWarning(UserWarning):
+    """Warning for security-related issues like disabled TLS verification."""
+
+    pass
 
 
 @dataclass
@@ -333,32 +348,30 @@ class GeodeProtocol(QuicConnectionProtocol):
         # because we use Queue instead of StreamReader
         if isinstance(event, StreamDataReceived):
             stream_id = event.stream_id
-            print(
-                f"[DEBUG-QUIC] StreamDataReceived: stream_id={stream_id}, data_len={len(event.data)}, end_stream={event.end_stream}",
-                file=sys.stderr,
+            logger.debug(
+                "StreamDataReceived: stream_id=%d, data_len=%d, end_stream=%s",
+                stream_id,
+                len(event.data),
+                event.end_stream,
             )
 
             # Create queue if not exists
             if stream_id not in self._stream_readers:
-                print(
-                    f"[DEBUG-QUIC] Creating new queue for stream {stream_id}",
-                    file=sys.stderr,
-                )
+                logger.debug("Creating new queue for stream %d", stream_id)
                 self._stream_readers[stream_id] = asyncio.Queue()
 
             # Put data in queue
             if event.data:
-                print(
-                    f"[DEBUG-QUIC] Putting {len(event.data)} bytes into queue for stream {stream_id}",
-                    file=sys.stderr,
+                logger.debug(
+                    "Putting %d bytes into queue for stream %d",
+                    len(event.data),
+                    stream_id,
                 )
                 self._stream_readers[stream_id].put_nowait(event.data)
 
             # Mark end of stream
             if event.end_stream:
-                print(
-                    f"[DEBUG-QUIC] Marking end of stream {stream_id}", file=sys.stderr
-                )
+                logger.debug("Marking end of stream %d", stream_id)
                 self._stream_readers[stream_id].put_nowait(None)
         elif isinstance(event, StreamReset):
             # Handle stream reset - mark stream as ended
@@ -387,7 +400,7 @@ class GeodeProtocol(QuicConnectionProtocol):
         stream_id = self._quic.get_next_available_stream_id(is_unidirectional=False)
         reader_queue = asyncio.Queue()
         self._stream_readers[stream_id] = reader_queue
-        print(f"[DEBUG] Created stream ID: {stream_id}", file=sys.stderr)
+        logger.debug("Created stream ID: %d", stream_id)
         return stream_id, reader_queue
 
     async def create_stream(self) -> Tuple["StreamReader", "StreamWriter"]:
@@ -406,12 +419,10 @@ class GeodeProtocol(QuicConnectionProtocol):
         self, stream_id: int, data: bytes, end_stream: bool = False
     ) -> None:
         """Write data to a stream."""
-        print(
-            f"[DEBUG] Writing {len(data)} bytes to stream {stream_id}", file=sys.stderr
-        )
+        logger.debug("Writing %d bytes to stream %d", len(data), stream_id)
         self._quic.send_stream_data(stream_id, data, end_stream)
         self.transmit()
-        print(f"[DEBUG] Transmitted data on stream {stream_id}", file=sys.stderr)
+        logger.debug("Transmitted data on stream %d", stream_id)
 
     async def read_from_stream(self, stream_id: int) -> Optional[bytes]:
         """Read data from a stream."""
@@ -502,15 +513,12 @@ class Connection:
     # CANARY: REQ=REQ-CLIENT-PY-001; FEATURE="PythonClientConnection"; ASPECT=HelloHandshake; STATUS=IMPL; OWNER=clients; UPDATED=2025-02-14
     async def connect(self) -> None:
         """Establish QUIC connection to Geode server."""
-        print(
-            f"[DEBUG] connect() called, already connected: {self._connected}",
-            file=sys.stderr,
-        )
+        logger.debug("connect() called, already connected: %s", self._connected)
         if self._connected:
             return
 
         # Configure QUIC - using same pattern as vendor/quic/clients/python/test_client.py
-        print("[DEBUG] Configuring QUIC...", file=sys.stderr)
+        logger.debug("Configuring QUIC...")
         configuration = QuicConfiguration(
             is_client=True,
             alpn_protocols=["geode/1"],
@@ -518,16 +526,21 @@ class Connection:
 
         # Configure TLS
         if self.skip_verify:
-            # Skip certificate verification (match vendor client pattern)
-            print(
-                "[DEBUG] Skipping TLS verification (skip_verify=True)", file=sys.stderr
+            # Emit security warning for insecure configuration
+            warnings.warn(
+                "TLS certificate verification is disabled (skip_verify=True). "
+                "This is insecure and should only be used for development. "
+                "Connections are vulnerable to man-in-the-middle attacks.",
+                SecurityWarning,
+                stacklevel=2,
             )
+            logger.debug("Skipping TLS verification (skip_verify=True)")
             configuration.verify_mode = 0  # Same as ssl.CERT_NONE
             # DON'T set server_name when skipping verification - this causes cert issues
         else:
             # Set server name for SNI only when verifying
             configuration.server_name = self.server_name
-            print(f"[DEBUG] Server name for SNI: {self.server_name}", file=sys.stderr)
+            logger.debug("Server name for SNI: %s", self.server_name)
 
             # Try to load CA certificate
             ca_cert_path = self.ca_cert
@@ -539,28 +552,23 @@ class Connection:
                 )
                 if os.path.exists(test_harness_ca):
                     ca_cert_path = test_harness_ca
-                    print(
-                        f"[DEBUG] Using test harness CA: {test_harness_ca}",
-                        file=sys.stderr,
-                    )
+                    logger.debug("Using test harness CA: %s", test_harness_ca)
 
             if ca_cert_path and os.path.exists(ca_cert_path):
-                print(
-                    f"[DEBUG] Loading CA certificate: {ca_cert_path}", file=sys.stderr
-                )
+                logger.debug("Loading CA certificate: %s", ca_cert_path)
                 configuration.load_verify_locations(ca_cert_path)
             else:
-                print(
-                    "[DEBUG] WARNING: No CA certificate found and skip_verify=False",
-                    file=sys.stderr,
+                logger.warning(
+                    "No CA certificate found and skip_verify=False - "
+                    "connection may fail if server uses self-signed certificate"
                 )
 
         if self.client_cert and self.client_key:
-            print("[DEBUG] Loading client certificate", file=sys.stderr)
+            logger.debug("Loading client certificate")
             configuration.load_cert_chain(self.client_cert, self.client_key)
 
         # Connect using async with pattern (proper context manager usage)
-        print(f"[DEBUG] Connecting to {self.host}:{self.port}...", file=sys.stderr)
+        logger.debug("Connecting to %s:%d...", self.host, self.port)
 
         try:
             # Store the async context manager
@@ -572,55 +580,49 @@ class Connection:
             )
 
             # Enter the context - this completes the QUIC handshake
-            print("[DEBUG] Entering QUIC connection context...", file=sys.stderr)
+            logger.debug("Entering QUIC connection context...")
             self._protocol = await self._connection_cm.__aenter__()
-            print("[DEBUG] QUIC handshake complete", file=sys.stderr)
+            logger.debug("QUIC handshake complete")
 
         except Exception as e:
-            print(
-                f"[DEBUG] QUIC connection failed: {type(e).__name__}: {e}",
-                file=sys.stderr,
-            )
-            import traceback
-
-            traceback.print_exc()
+            logger.exception("QUIC connection failed")
             raise GeodeConnectionError(f"Failed to establish QUIC connection: {e}")
 
         # Create bidirectional stream
         try:
-            print("[DEBUG] Creating bidirectional stream...", file=sys.stderr)
+            logger.debug("Creating bidirectional stream...")
             self._reader, self._writer = await self._protocol.create_stream()
-            print("[DEBUG] Created bidirectional stream", file=sys.stderr)
+            logger.debug("Created bidirectional stream")
         except Exception as e:
-            print(f"[DEBUG] Stream creation failed: {e}", file=sys.stderr)
+            logger.debug("Stream creation failed: %s", e)
             raise GeodeConnectionError(f"Failed to create stream: {e}")
 
-        # Send HELLO message
+        # Send HELLO message (don't log full message content for security)
         hello = {
             "type": "HELLO",
             "client_name": self.hello_name,
             "client_ver": self.hello_ver,
             "wanted_conformance": self.conformance,
         }
-        print(f"[DEBUG] Sending HELLO message: {hello}", file=sys.stderr)
+        logger.debug("Sending HELLO message")
         await self._write_json(hello)
-        print("[DEBUG] HELLO sent, waiting for response...", file=sys.stderr)
+        logger.debug("HELLO sent, waiting for response...")
 
         # Read HELLO response with timeout
         try:
             response = await asyncio.wait_for(self._read_json(), timeout=5.0)
-            print(f"[DEBUG] Received HELLO response: {response}", file=sys.stderr)
+            logger.debug("Received HELLO response")
             if not response:
                 raise GeodeConnectionError("No HELLO response from server")
         except asyncio.TimeoutError:
-            print("[DEBUG] HELLO response timed out!", file=sys.stderr)
+            logger.debug("HELLO response timed out")
             raise GeodeConnectionError("Timeout waiting for HELLO response")
         except Exception as e:
-            print(f"[DEBUG] Error reading HELLO response: {e}", file=sys.stderr)
+            logger.debug("Error reading HELLO response: %s", e)
             raise GeodeConnectionError(f"Failed to read HELLO response: {e}")
 
         self._connected = True
-        print("[DEBUG] Connection fully established", file=sys.stderr)
+        logger.debug("Connection fully established")
 
     async def _write_json(self, obj: Dict[str, Any]) -> None:
         """Write JSON object as a line."""
@@ -632,7 +634,14 @@ class Connection:
         await self._writer.drain()
 
     async def _read_line(self) -> bytes:
-        """Read a single line from the stream."""
+        """
+        Read a single line from the stream.
+
+        Raises:
+            GeodeConnectionError: If not connected, stream closed, or line
+                exceeds MAX_LINE_SIZE (protection against DoS via unbounded
+                buffer growth).
+        """
         if not self._reader:
             raise GeodeConnectionError("Not connected")
 
@@ -643,6 +652,13 @@ class Connection:
                 line = self._buffer[:newline_idx]
                 self._buffer = self._buffer[newline_idx + 1 :]
                 return line
+
+            # SEC-026: Check buffer size to prevent DoS via unbounded growth
+            if len(self._buffer) > MAX_LINE_SIZE:
+                self._buffer = b""  # Clear buffer to allow recovery
+                raise GeodeConnectionError(
+                    f"Line exceeds maximum size of {MAX_LINE_SIZE} bytes"
+                )
 
             # Read more data
             data = await self._reader.read(4096)
@@ -697,10 +713,13 @@ class Connection:
         Create a savepoint within the current transaction.
 
         Args:
-            name: Savepoint name
+            name: Savepoint name (must be a valid GQL identifier)
 
         Returns:
             Savepoint object that can be used to rollback to this point
+
+        Raises:
+            ValidationError: If the savepoint name is not a valid identifier
 
         Example:
             await conn.begin()
@@ -710,10 +729,12 @@ class Connection:
             await conn.rollback_to(sp)  # Rolls back the SET operation
             await conn.commit()
         """
+        # Validate savepoint name to prevent injection
+        validated_name = validate.identifier(name)
         async with self._lock:
-            await self._write_json({"type": "SAVEPOINT", "name": name})
+            await self._write_json({"type": "SAVEPOINT", "name": validated_name})
             await self._read_json()
-        return Savepoint(name=name, connection=self)
+        return Savepoint(name=validated_name, connection=self)
 
     async def rollback_to(self, savepoint: "Savepoint") -> None:
         """
@@ -721,9 +742,14 @@ class Connection:
 
         Args:
             savepoint: The savepoint to rollback to
+
+        Raises:
+            ValidationError: If the savepoint name is not a valid identifier
         """
+        # Validate savepoint name for defense in depth
+        validated_name = validate.identifier(savepoint.name)
         async with self._lock:
-            await self._write_json({"type": "ROLLBACK_TO", "name": savepoint.name})
+            await self._write_json({"type": "ROLLBACK_TO", "name": validated_name})
             await self._read_json()
 
     async def query(

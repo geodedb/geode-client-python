@@ -66,8 +66,6 @@ include:
   - component: gitlab.com/devnw/ci-catalog/sbom-generate@latest
 
   - component: gitlab.com/devnw/ci-catalog/sbom-scan@latest
-    inputs:
-      allow_failure: true
 
   # Release creation
   - component: gitlab.com/devnw/ci-catalog/release-semantic@latest
@@ -94,6 +92,9 @@ stages:
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
   PYTHONPATH: "$CI_PROJECT_DIR"
+  # SEC-024: Pin Geode server image to specific version (not :latest)
+  # Update this version when new Geode releases are published
+  GEODE_SERVER_VERSION: "v0.1.0"
 
 # Global cache for Python dependencies
 cache:
@@ -114,10 +115,11 @@ mypy:
       if [ -d ".venv" ]; then
         source .venv/bin/activate
       fi
-      pip install mypy
+      # SEC-023: Pin mypy version to prevent supply chain attacks
+      pip install "mypy>=1.0,<2.0"
   script:
     - mypy geode_client/ --ignore-missing-imports
-  allow_failure: true  # Gradual typing adoption
+  # Type checking is now enforced - mypy passes without errors
   needs:
     - python-install
 
@@ -133,7 +135,8 @@ test:property:
       if [ -d ".venv" ]; then
         source .venv/bin/activate
       fi
-      pip install hypothesis pytest pytest-asyncio
+      # SEC-023: Pin package versions to prevent supply chain attacks
+      pip install "hypothesis>=6.0,<7.0" "pytest>=7.0,<9.0" "pytest-asyncio>=0.21,<1.0"
   script:
     - pytest tests/property/ -v --tb=short --junitxml=report-property.xml
   artifacts:
@@ -155,7 +158,8 @@ test:integration:
   stage: integration
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
   services:
-    - name: $CI_REGISTRY/devnw/codepros/geode/geode:latest
+    # SEC-024: Use pinned version instead of :latest to prevent supply chain attacks
+    - name: $CI_REGISTRY/devnw/codepros/geode/geode:${GEODE_SERVER_VERSION}
       alias: geode
       command: ["serve", "--listen", "0.0.0.0:3141", "--log-level", "info"]
   variables:
@@ -206,7 +210,8 @@ pages:
       if [ -d ".venv" ]; then
         source .venv/bin/activate
       fi
-      pip install sphinx sphinx-rtd-theme
+      # SEC-023: Pin package versions to prevent supply chain attacks
+      pip install "sphinx>=7.0,<9.0" "sphinx-rtd-theme>=2.0,<3.0"
   script:
     - |
       if [ -d "docs" ]; then

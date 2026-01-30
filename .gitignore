@@ -155,6 +155,11 @@ benchmark-results.json
 *.swo
 *~
 
+# Backup files
+*.bak
+*.orig
+*.backup
+
 # OS
 .DS_Store
 Thumbs.db

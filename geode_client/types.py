@@ -232,12 +232,20 @@ def decode_value(raw: Any, type_name: str) -> Value:
     type_upper = type_name.upper()
 
     if type_upper == "INT":
-        return Value(kind=ValueKind.INT, int_value=int(raw))
+        try:
+            return Value(kind=ValueKind.INT, int_value=int(raw))
+        except (ValueError, TypeError):
+            # If conversion fails, store as string representation
+            return Value(kind=ValueKind.STRING, str_value=str(raw))
     elif type_upper == "DECIMAL":
         s = str(raw).strip('"')
-        dec = Decimal(s)
-        scale = s.split(".")[-1] if "." in s else ""
-        return Value(kind=ValueKind.DECIMAL, decimal_value=dec, decimal_scale=scale)
+        try:
+            dec = Decimal(s)
+            scale = s.split(".")[-1] if "." in s else ""
+            return Value(kind=ValueKind.DECIMAL, decimal_value=dec, decimal_scale=scale)
+        except Exception:
+            # If conversion fails, store as string representation
+            return Value(kind=ValueKind.DECIMAL, str_value=s)
     elif type_upper == "BOOL":
         return Value(kind=ValueKind.BOOL, bool_value=bool(raw))
     elif type_upper == "STRING":

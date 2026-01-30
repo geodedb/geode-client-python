@@ -35,30 +35,33 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        "aioquic>=0.9.0",  # QUIC support (required)
+        # QUIC support - upper bound prevents unexpected major version changes
+        "aioquic>=0.9.0,<2.0.0",
     ],
     extras_require={
         "dev": [
-            "pytest>=7.0.0",
-            "pytest-asyncio>=0.21.0",
-            "pytest-cov>=4.0.0",
-            "pytest-benchmark>=4.0.0",
-            "hypothesis>=6.0.0",
-            "black>=23.0.0",
-            "mypy>=1.0.0",
-            "ruff>=0.1.0",
+            # Testing - upper bounds for supply chain security
+            "pytest>=7.0.0,<9.0.0",
+            "pytest-asyncio>=0.21.0,<1.0.0",
+            "pytest-cov>=4.0.0,<6.0.0",
+            "pytest-benchmark>=4.0.0,<5.0.0",
+            "hypothesis>=6.0.0,<7.0.0",
+            # Code quality - upper bounds
+            "black>=23.0.0,<25.0.0",
+            "mypy>=1.0.0,<2.0.0",
+            "ruff>=0.1.0,<1.0.0",
         ],
         "integration": [
-            "pytest>=7.0.0",
-            "pytest-asyncio>=0.21.0",
+            "pytest>=7.0.0,<9.0.0",
+            "pytest-asyncio>=0.21.0,<1.0.0",
         ],
         "benchmark": [
-            "pytest>=7.0.0",
-            "pytest-benchmark>=4.0.0",
+            "pytest>=7.0.0,<9.0.0",
+            "pytest-benchmark>=4.0.0,<5.0.0",
         ],
         "property": [
-            "pytest>=7.0.0",
-            "hypothesis>=6.0.0",
+            "pytest>=7.0.0,<9.0.0",
+            "hypothesis>=6.0.0,<7.0.0",
         ],
     },
     entry_points={

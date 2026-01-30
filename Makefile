@@ -13,7 +13,10 @@ VENV_PYTEST = $(VENV_DIR)/bin/pytest
 
 # Docker settings for integration tests
 DOCKER ?= docker
-GEODE_IMAGE ?= registry.gitlab.com/devnw/geode/geode:latest
+# SEC-024: Pin Geode server image to specific version (not :latest)
+# Update this version when new Geode releases are published
+GEODE_VERSION ?= v0.1.0
+GEODE_IMAGE ?= registry.gitlab.com/devnw/geode/geode:$(GEODE_VERSION)
 GEODE_CONTAINER ?= geode-python-test
 GEODE_HOST ?= 127.0.0.1
 GEODE_PORT ?= 3141
@@ -85,7 +88,8 @@ help:
 	@echo "  PYTHON            - Python interpreter (default: python3)"
 	@echo "  GEODE_HOST        - Geode server host (default: 127.0.0.1)"
 	@echo "  GEODE_PORT        - Geode server port (default: 3141)"
-	@echo "  GEODE_IMAGE       - Docker image (default: registry.gitlab.com/devnw/geode/geode:latest)"
+	@echo "  GEODE_VERSION     - Geode server version (default: v0.1.0)"
+	@echo "  GEODE_IMAGE       - Docker image (default: registry.gitlab.com/devnw/geode/geode:\$$GEODE_VERSION)"
 
 # =============================================================================
 # Setup Targets

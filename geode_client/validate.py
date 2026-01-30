@@ -369,6 +369,107 @@ def timeout(
     return float(value)
 
 
+def email(address: str, *, max_length: int = 320) -> str:
+    """
+    Validate an email address format.
+
+    This performs basic format validation. It does not verify the address exists.
+
+    Args:
+        address: The email address to validate
+        max_length: Maximum allowed length (default 320, per RFC 5321)
+
+    Returns:
+        The validated email address (stripped and lowercased)
+
+    Raises:
+        ValidationError: If the email format is invalid
+    """
+    if not isinstance(address, str):
+        raise ValidationError(f"Email must be a string, got {type(address).__name__}")
+
+    if not address:
+        raise ValidationError("Email cannot be empty")
+
+    address = address.strip()
+
+    if len(address) > max_length:
+        raise ValidationError(
+            f"Email too long: {len(address)} exceeds maximum of {max_length}"
+        )
+
+    # Basic RFC 5322 email format validation
+    # Note: This is intentionally not overly strict to avoid rejecting valid addresses
+    email_regex = re.compile(
+        r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+        r"[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+        r"(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+    )
+
+    if not email_regex.match(address):
+        raise ValidationError(f"Invalid email format: '{address}'")
+
+    return address.lower()
+
+
+def pagination_limit(
+    value: int,
+    *,
+    min_value: int = 1,
+    max_value: int = 10000,
+) -> int:
+    """
+    Validate a pagination limit.
+
+    Args:
+        value: The limit value to validate
+        min_value: Minimum allowed value (default 1)
+        max_value: Maximum allowed value (default 10000)
+
+    Returns:
+        The validated limit
+
+    Raises:
+        ValidationError: If the limit is invalid
+    """
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValidationError(f"Limit must be an integer, got {type(value).__name__}")
+
+    if value < min_value:
+        raise ValidationError(f"Limit must be at least {min_value}, got {value}")
+
+    if value > max_value:
+        raise ValidationError(f"Limit must be at most {max_value}, got {value}")
+
+    return value
+
+
+def pagination_offset(value: int, *, max_value: int = 1_000_000) -> int:
+    """
+    Validate a pagination offset.
+
+    Args:
+        value: The offset value to validate
+        max_value: Maximum allowed value (default 1,000,000)
+
+    Returns:
+        The validated offset
+
+    Raises:
+        ValidationError: If the offset is invalid
+    """
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValidationError(f"Offset must be an integer, got {type(value).__name__}")
+
+    if value < 0:
+        raise ValidationError(f"Offset must be non-negative, got {value}")
+
+    if value > max_value:
+        raise ValidationError(f"Offset must be at most {max_value}, got {value}")
+
+    return value
+
+
 def pool_size(
     min_size: int,
     max_size: int,

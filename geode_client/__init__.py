@@ -20,6 +20,7 @@ from .client import (
     GeodeConnectionError,
     QueryError,
     AuthError,
+    SecurityWarning,
 )
 from .types import (
     Value,
@@ -58,11 +59,12 @@ __all__ = [
     "PlanOperation",
     "BatchResult",
     "open_database",
-    # Exceptions
+    # Exceptions and Warnings
     "GeodeError",
     "GeodeConnectionError",
     "QueryError",
     "AuthError",
+    "SecurityWarning",
     # Types
     "Value",
     "ValueKind",

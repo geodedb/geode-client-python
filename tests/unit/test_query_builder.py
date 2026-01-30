@@ -153,6 +153,32 @@ class TestQueryBuilderLimit:
         text, _ = qb.build()
         assert "LIMIT 1" in text
 
+    def test_limit_zero(self):
+        """Test LIMIT 0 is valid."""
+        qb = QueryBuilder().match("(n)").return_("n").limit(0)
+        text, _ = qb.build()
+        assert "LIMIT 0" in text
+
+    def test_limit_negative_raises(self):
+        """Test negative LIMIT raises ValueError."""
+        with pytest.raises(ValueError, match="non-negative"):
+            QueryBuilder().limit(-1)
+
+    def test_limit_float_raises(self):
+        """Test float LIMIT raises ValueError."""
+        with pytest.raises(ValueError, match="integer"):
+            QueryBuilder().limit(10.5)
+
+    def test_limit_string_raises(self):
+        """Test string LIMIT raises ValueError."""
+        with pytest.raises(ValueError, match="integer"):
+            QueryBuilder().limit("10")
+
+    def test_limit_bool_raises(self):
+        """Test bool LIMIT raises ValueError (bool is int subclass)."""
+        with pytest.raises(ValueError, match="integer"):
+            QueryBuilder().limit(True)
+
 
 class TestQueryBuilderOffset:
     """Tests for OFFSET clause."""
@@ -169,6 +195,32 @@ class TestQueryBuilderOffset:
         text, _ = qb.build()
         assert "LIMIT 10" in text
         assert "OFFSET 20" in text
+
+    def test_offset_zero(self):
+        """Test OFFSET 0 is valid."""
+        qb = QueryBuilder().match("(n)").return_("n").offset(0)
+        text, _ = qb.build()
+        assert "OFFSET 0" in text
+
+    def test_offset_negative_raises(self):
+        """Test negative OFFSET raises ValueError."""
+        with pytest.raises(ValueError, match="non-negative"):
+            QueryBuilder().offset(-5)
+
+    def test_offset_float_raises(self):
+        """Test float OFFSET raises ValueError."""
+        with pytest.raises(ValueError, match="integer"):
+            QueryBuilder().offset(5.5)
+
+    def test_offset_string_raises(self):
+        """Test string OFFSET raises ValueError."""
+        with pytest.raises(ValueError, match="integer"):
+            QueryBuilder().offset("5")
+
+    def test_offset_bool_raises(self):
+        """Test bool OFFSET raises ValueError (bool is int subclass)."""
+        with pytest.raises(ValueError, match="integer"):
+            QueryBuilder().offset(False)
 
 
 class TestQueryBuilderCreate:
@@ -709,3 +761,205 @@ class TestQueryBuilderChaining:
         assert pb.is_not_null("a") is pb
         assert pb.exists("()") is pb
         assert pb.in_("a", [1]) is pb
+
+
+class TestFormatValueEscaping:
+    """Tests for _format_value string escaping (security-related)."""
+
+    def test_escape_single_quote(self):
+        """Test that single quotes are escaped."""
+        pb = PatternBuilder().node("n", properties={"name": "O'Brien"})
+        result = pb.build()
+        # Single quote should be escaped as \'
+        assert "O\\'Brien" in result
+
+    def test_escape_backslash(self):
+        """Test that backslashes are escaped."""
+        pb = PatternBuilder().node("n", properties={"path": "C:\\Users\\test"})
+        result = pb.build()
+        # Backslashes should be doubled
+        assert "C:\\\\Users\\\\test" in result
+
+    def test_escape_backslash_before_quote(self):
+        """Test backslash followed by quote is handled correctly."""
+        # This tests against injection via "value\'" which could escape the closing quote
+        pb = PatternBuilder().node("n", properties={"data": "test\\'"})
+        result = pb.build()
+        # Should be: 'test\\\'', meaning backslash escaped, then quote escaped
+        assert "test\\\\\\'" in result
+
+    def test_escape_preserves_other_characters(self):
+        """Test that other special characters are not over-escaped."""
+        pb = PatternBuilder().node("n", properties={"name": "Hello\nWorld\t!"})
+        result = pb.build()
+        # Newline and tab should be preserved as-is (they're valid in GQL strings)
+        assert "Hello\nWorld\t!" in result
+
+    def test_parameter_reference_not_escaped(self):
+        """Test that parameter references ($param) are not quoted."""
+        pb = PatternBuilder().node("n", properties={"name": "$userName"})
+        result = pb.build()
+        # Parameter should not be wrapped in quotes
+        assert "$userName" in result
+        assert "'$userName'" not in result
+
+    def test_boolean_values(self):
+        """Test boolean value formatting."""
+        pb = PatternBuilder().node("n", properties={"active": True, "deleted": False})
+        result = pb.build()
+        assert "true" in result
+        assert "false" in result
+
+    def test_numeric_values(self):
+        """Test numeric value formatting."""
+        pb = PatternBuilder().node("n", properties={"count": 42, "score": 3.14})
+        result = pb.build()
+        assert "42" in result
+        assert "3.14" in result
+
+    def test_null_value(self):
+        """Test null value formatting."""
+        pb = PatternBuilder().node("n", properties={"data": None})
+        result = pb.build()
+        assert "null" in result
+
+    def test_complex_injection_attempt(self):
+        """Test complex injection attempt is properly escaped."""
+        # Attempt to break out of string and inject GQL
+        malicious = "'; DELETE (n) WHERE true; RETURN '"
+        pb = PatternBuilder().node("n", properties={"name": malicious})
+        result = pb.build()
+        # All single quotes should be escaped
+        assert "\\'" in result
+        # The result should still be a valid string literal (starts and ends with quote)
+        # and the injection should be neutralized
+        name_part = result.split("name:")[1].split("}")[0].strip()
+        assert name_part.startswith("'")
+        assert name_part.endswith("'")
+
+    def test_in_predicate_escaping(self):
+        """Test that IN predicate values are properly escaped."""
+        pb = PredicateBuilder().in_("n.name", ["O'Brien", "test\\path"])
+        result = pb.build_and()
+        assert "O\\'Brien" in result
+        assert "test\\\\path" in result
+
+
+class TestPredicateBuilderSafeMethods:
+    """Tests for safe_* methods that escape values (SEC-013)."""
+
+    def test_safe_equals_string(self):
+        """Test safe_equals with string value."""
+        pb = PredicateBuilder().safe_equals("n.name", "Alice")
+        result = pb.build_and()
+        assert result == "n.name = 'Alice'"
+
+    def test_safe_equals_string_with_quote(self):
+        """Test safe_equals escapes single quotes."""
+        pb = PredicateBuilder().safe_equals("n.name", "O'Brien")
+        result = pb.build_and()
+        assert result == "n.name = 'O\\'Brien'"
+
+    def test_safe_equals_string_with_backslash(self):
+        """Test safe_equals escapes backslashes."""
+        pb = PredicateBuilder().safe_equals("n.path", "C:\\Users")
+        result = pb.build_and()
+        assert result == "n.path = 'C:\\\\Users'"
+
+    def test_safe_equals_integer(self):
+        """Test safe_equals with integer value."""
+        pb = PredicateBuilder().safe_equals("n.age", 25)
+        result = pb.build_and()
+        assert result == "n.age = 25"
+
+    def test_safe_equals_boolean(self):
+        """Test safe_equals with boolean value."""
+        pb = PredicateBuilder().safe_equals("n.active", True)
+        result = pb.build_and()
+        assert result == "n.active = true"
+
+    def test_safe_equals_none(self):
+        """Test safe_equals with None value."""
+        pb = PredicateBuilder().safe_equals("n.data", None)
+        result = pb.build_and()
+        assert result == "n.data = null"
+
+    def test_safe_not_equals_string(self):
+        """Test safe_not_equals with string value."""
+        pb = PredicateBuilder().safe_not_equals("n.status", "deleted")
+        result = pb.build_and()
+        assert result == "n.status <> 'deleted'"
+
+    def test_safe_not_equals_escapes_injection(self):
+        """Test safe_not_equals escapes injection attempt."""
+        malicious = "'; DELETE (n); RETURN '"
+        pb = PredicateBuilder().safe_not_equals("n.name", malicious)
+        result = pb.build_and()
+        # All single quotes in the value should be escaped as \'
+        assert "\\'" in result
+        # Should not contain unescaped injection - verify proper structure
+        assert "DELETE" in result  # Still present but as escaped string
+        # The escaped result should have the injection neutralized:
+        # n.name <> '\'; DELETE (n); RETURN \''
+        # The internal quotes are escaped, so the string literal is intact
+        assert result.startswith("n.name <> '")
+        assert result.endswith("'")
+
+    def test_safe_greater_than_integer(self):
+        """Test safe_greater_than with integer value."""
+        pb = PredicateBuilder().safe_greater_than("n.age", 18)
+        result = pb.build_and()
+        assert result == "n.age > 18"
+
+    def test_safe_greater_than_float(self):
+        """Test safe_greater_than with float value."""
+        pb = PredicateBuilder().safe_greater_than("n.score", 3.14)
+        result = pb.build_and()
+        assert result == "n.score > 3.14"
+
+    def test_safe_less_than_integer(self):
+        """Test safe_less_than with integer value."""
+        pb = PredicateBuilder().safe_less_than("n.count", 100)
+        result = pb.build_and()
+        assert result == "n.count < 100"
+
+    def test_safe_methods_chaining(self):
+        """Test that safe methods can be chained."""
+        pb = (PredicateBuilder()
+              .safe_greater_than("n.age", 18)
+              .safe_less_than("n.age", 65)
+              .safe_equals("n.active", True))
+        result = pb.build_and()
+        assert "n.age > 18" in result
+        assert "n.age < 65" in result
+        assert "n.active = true" in result
+        assert result.count(" AND ") == 2
+
+    def test_safe_equals_returns_self(self):
+        """Test safe_equals returns self for chaining."""
+        pb = PredicateBuilder()
+        assert pb.safe_equals("a", "b") is pb
+
+    def test_safe_not_equals_returns_self(self):
+        """Test safe_not_equals returns self for chaining."""
+        pb = PredicateBuilder()
+        assert pb.safe_not_equals("a", "b") is pb
+
+    def test_safe_greater_than_returns_self(self):
+        """Test safe_greater_than returns self for chaining."""
+        pb = PredicateBuilder()
+        assert pb.safe_greater_than("a", 1) is pb
+
+    def test_safe_less_than_returns_self(self):
+        """Test safe_less_than returns self for chaining."""
+        pb = PredicateBuilder()
+        assert pb.safe_less_than("a", 1) is pb
+
+    def test_safe_equals_complex_injection(self):
+        """Test safe_equals handles complex injection attempts."""
+        # Attempt backslash-quote escape sequence attack
+        malicious = "value\\'"
+        pb = PredicateBuilder().safe_equals("n.field", malicious)
+        result = pb.build_and()
+        # Backslash should be escaped first, then quote
+        assert "value\\\\\\'" in result

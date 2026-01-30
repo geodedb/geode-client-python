@@ -13,6 +13,7 @@ from geode_client.client import (
     GeodeConnectionError,
     GeodeError,
     GeodeProtocol,
+    MAX_LINE_SIZE,
     Page,
     PlanOperation,
     PreparedStatement,
@@ -454,6 +455,31 @@ class TestConnectionTransaction:
         mock_connection._write_json.assert_called_once_with(
             {"type": "ROLLBACK_TO", "name": "sp1"}
         )
+
+    @pytest.mark.asyncio
+    async def test_savepoint_validates_name(self, mock_connection):
+        """Test that savepoint name is validated as identifier."""
+        from geode_client.validate import ValidationError
+
+        # Invalid names should raise ValidationError
+        with pytest.raises(ValidationError, match="Invalid identifier"):
+            await mock_connection.savepoint("1invalid")  # starts with digit
+
+        with pytest.raises(ValidationError, match="Invalid identifier"):
+            await mock_connection.savepoint("invalid-name")  # contains hyphen
+
+        with pytest.raises(ValidationError, match="cannot be empty"):
+            await mock_connection.savepoint("")  # empty
+
+    @pytest.mark.asyncio
+    async def test_rollback_to_validates_name(self, mock_connection):
+        """Test that rollback_to validates savepoint name."""
+        from geode_client.validate import ValidationError
+
+        # Even with manually created Savepoint, validation should occur
+        bad_sp = Savepoint(name="invalid-name", connection=mock_connection)
+        with pytest.raises(ValidationError, match="Invalid identifier"):
+            await mock_connection.rollback_to(bad_sp)
 
 
 class TestConnectionIO:
@@ -1193,3 +1219,72 @@ class TestGeodeProtocol:
 
         # Should not raise
         GeodeProtocol.close_stream(protocol, 999)
+
+
+class TestBufferLimits:
+    """Test buffer size limits to prevent DoS (SEC-026)."""
+
+    def test_max_line_size_constant(self):
+        """Test MAX_LINE_SIZE constant is defined and reasonable."""
+        # Should be 16MB
+        assert MAX_LINE_SIZE == 16 * 1024 * 1024
+
+    @pytest.mark.asyncio
+    async def test_read_line_within_limit(self):
+        """Test _read_line works for data within size limit."""
+        conn = Connection(host="localhost", port=8443)
+        conn._buffer = b""
+
+        # Create mock reader that returns data with newline
+        mock_reader = AsyncMock()
+        mock_reader.read = AsyncMock(return_value=b"test data\n")
+        conn._reader = mock_reader
+
+        line = await conn._read_line()
+        assert line == b"test data"
+
+    @pytest.mark.asyncio
+    async def test_read_line_exceeds_limit(self):
+        """Test _read_line raises error when buffer exceeds MAX_LINE_SIZE."""
+        conn = Connection(host="localhost", port=8443)
+        # Pre-fill buffer to exceed limit
+        conn._buffer = b"x" * (MAX_LINE_SIZE + 1)
+
+        # Create mock reader (won't be used since buffer already exceeds limit)
+        mock_reader = AsyncMock()
+        mock_reader.read = AsyncMock(return_value=b"more data")
+        conn._reader = mock_reader
+
+        with pytest.raises(GeodeConnectionError) as exc_info:
+            await conn._read_line()
+
+        assert "exceeds maximum size" in str(exc_info.value)
+        # Buffer should be cleared for recovery
+        assert conn._buffer == b""
+
+    @pytest.mark.asyncio
+    async def test_read_line_gradual_growth_exceeds_limit(self):
+        """Test _read_line raises error when gradual reads exceed limit."""
+        conn = Connection(host="localhost", port=8443)
+        conn._buffer = b""
+
+        # Create mock reader that returns chunks without newline
+        # Each read adds 4096 bytes (default chunk size)
+        chunk_count = 0
+        chunks_to_exceed = (MAX_LINE_SIZE // 4096) + 2
+
+        async def mock_read(size):
+            nonlocal chunk_count
+            chunk_count += 1
+            if chunk_count <= chunks_to_exceed:
+                return b"x" * 4096  # No newline, keeps growing
+            return b""  # End of stream
+
+        mock_reader = AsyncMock()
+        mock_reader.read = mock_read
+        conn._reader = mock_reader
+
+        with pytest.raises(GeodeConnectionError) as exc_info:
+            await conn._read_line()
+
+        assert "exceeds maximum size" in str(exc_info.value)

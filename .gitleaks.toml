@@ -8,16 +8,22 @@ title = "Gitleaks Configuration"
 useDefault = true
 
 [allowlist]
-description = "Global allowlist"
+description = "Global allowlist - only cache/build directories excluded"
 paths = [
-  '''testdata''',
-  '''tests/.*''',
   '''\.venv''',
   '''venv''',
   '''__pycache__''',
   '''\.pytest_cache''',
   '''\.mypy_cache''',
-  '''.*\.py$''',
-  '''.*\.md$''',
-  '''.*\.log$''',
+  '''\.git''',
+  '''\.ruff_cache''',
+  '''\.hypothesis''',
+  '''node_modules''',
+  '''dist''',
+  '''build''',
+  '''\.egg-info''',
 ]
+
+# Note: testdata and tests directories are NOT allowlisted to ensure
+# test fixtures don't contain real secrets. Use allowlist rules for
+# specific patterns if needed (e.g., test tokens with specific formats).

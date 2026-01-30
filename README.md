@@ -173,7 +173,8 @@ async with client.connection() as conn:
 
     # Login
     session = await auth.login("username", "password")
-    print(f"Token: {session.token}")
+    # Note: Never log or print session tokens in production code
+    print(f"Logged in as: {session.username}")
     print(f"Roles: {session.roles}")
 
     # Create user

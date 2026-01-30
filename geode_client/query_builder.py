@@ -65,12 +65,36 @@ class QueryBuilder:
         return self
 
     def limit(self, n: int) -> "QueryBuilder":
-        """Add a LIMIT clause."""
+        """
+        Add a LIMIT clause.
+
+        Args:
+            n: Maximum number of results (must be non-negative integer)
+
+        Raises:
+            ValueError: If n is negative or not an integer
+        """
+        if not isinstance(n, int) or isinstance(n, bool):
+            raise ValueError(f"limit must be an integer, got {type(n).__name__}")
+        if n < 0:
+            raise ValueError(f"limit must be non-negative, got {n}")
         self._clauses.append(("LIMIT", str(n)))
         return self
 
     def offset(self, n: int) -> "QueryBuilder":
-        """Add an OFFSET clause."""
+        """
+        Add an OFFSET clause.
+
+        Args:
+            n: Number of results to skip (must be non-negative integer)
+
+        Raises:
+            ValueError: If n is negative or not an integer
+        """
+        if not isinstance(n, int) or isinstance(n, bool):
+            raise ValueError(f"offset must be an integer, got {type(n).__name__}")
+        if n < 0:
+            raise ValueError(f"offset must be non-negative, got {n}")
         self._clauses.append(("OFFSET", str(n)))
         return self
 
@@ -239,11 +263,22 @@ class PatternBuilder:
 
     @staticmethod
     def _format_value(value: Any) -> str:
-        """Format a value for GQL."""
+        """
+        Format a value for GQL.
+
+        Security Note:
+            String values are escaped to prevent GQL injection attacks.
+            Both backslashes and single quotes are escaped properly.
+            For user-provided values, consider using parameterized queries
+            instead (e.g., with_param()) for defense in depth.
+        """
         if isinstance(value, str):
             if value.startswith("$"):
                 return value  # Parameter reference
-            return f"'{value.replace(chr(39), chr(92) + chr(39))}'"
+            # Escape backslash first, then single quote
+            # This prevents injection via escape sequence manipulation
+            escaped = value.replace("\\", "\\\\").replace("'", "\\'")
+            return f"'{escaped}'"
         elif isinstance(value, bool):
             return "true" if value else "false"
         elif isinstance(value, (int, float)):
@@ -258,7 +293,31 @@ class PredicateBuilder:
     """
     Helper for building WHERE conditions.
 
-    Example:
+    Security Warning:
+        The comparison methods (equals, not_equals, greater_than, etc.) accept
+        raw string parameters that are concatenated directly into the query.
+        Do NOT pass untrusted user input to these methods, as this can lead
+        to GQL injection attacks.
+
+        For user-provided values, use one of these safe approaches:
+
+        1. Use parameterized queries with QueryBuilder.with_param():
+           ```python
+           QueryBuilder()
+               .match("(p:Person)")
+               .where("p.name = $name")
+               .with_param("name", user_input)
+               .build()
+           ```
+
+        2. Use the safe_* methods that escape values:
+           ```python
+           PredicateBuilder()
+               .safe_equals("p.name", user_input)  # Escapes the value
+               .build_and()
+           ```
+
+    Example (trusted input only):
         predicate = (PredicateBuilder()
             .greater_than("p.age", "25")
             .not_equals("p.city", "'NYC'")
@@ -271,53 +330,170 @@ class PredicateBuilder:
         self._conditions: List[str] = []
 
     def equals(self, left: str, right: str) -> "PredicateBuilder":
-        """Add an equality condition."""
+        """
+        Add an equality condition.
+
+        Warning:
+            Both parameters are inserted directly without escaping.
+            Do NOT pass untrusted input. Use safe_equals() for user values.
+        """
         self._conditions.append(f"{left} = {right}")
         return self
 
     def not_equals(self, left: str, right: str) -> "PredicateBuilder":
-        """Add an inequality condition."""
+        """
+        Add an inequality condition.
+
+        Warning:
+            Both parameters are inserted directly without escaping.
+            Do NOT pass untrusted input. Use safe_not_equals() for user values.
+        """
         self._conditions.append(f"{left} <> {right}")
         return self
 
     def greater_than(self, left: str, right: str) -> "PredicateBuilder":
-        """Add a greater than condition."""
+        """
+        Add a greater than condition.
+
+        Warning:
+            Both parameters are inserted directly without escaping.
+            Do NOT pass untrusted input. Use safe_greater_than() for user values.
+        """
         self._conditions.append(f"{left} > {right}")
         return self
 
     def less_than(self, left: str, right: str) -> "PredicateBuilder":
-        """Add a less than condition."""
+        """
+        Add a less than condition.
+
+        Warning:
+            Both parameters are inserted directly without escaping.
+            Do NOT pass untrusted input. Use safe_less_than() for user values.
+        """
         self._conditions.append(f"{left} < {right}")
         return self
 
     def greater_equal(self, left: str, right: str) -> "PredicateBuilder":
-        """Add a greater than or equal condition."""
+        """
+        Add a greater than or equal condition.
+
+        Warning:
+            Both parameters are inserted directly without escaping.
+            Do NOT pass untrusted input.
+        """
         self._conditions.append(f"{left} >= {right}")
         return self
 
     def less_equal(self, left: str, right: str) -> "PredicateBuilder":
-        """Add a less than or equal condition."""
+        """
+        Add a less than or equal condition.
+
+        Warning:
+            Both parameters are inserted directly without escaping.
+            Do NOT pass untrusted input.
+        """
         self._conditions.append(f"{left} <= {right}")
         return self
 
+    def safe_equals(self, property_path: str, value: Any) -> "PredicateBuilder":
+        """
+        Add an equality condition with safe value escaping.
+
+        This method safely escapes the value parameter, making it safe
+        for use with untrusted user input.
+
+        Args:
+            property_path: The property to compare (e.g., "p.name")
+            value: The value to compare against (will be escaped)
+
+        Example:
+            predicate = PredicateBuilder().safe_equals("p.name", user_input)
+        """
+        formatted = PatternBuilder._format_value(value)
+        self._conditions.append(f"{property_path} = {formatted}")
+        return self
+
+    def safe_not_equals(self, property_path: str, value: Any) -> "PredicateBuilder":
+        """
+        Add an inequality condition with safe value escaping.
+
+        This method safely escapes the value parameter, making it safe
+        for use with untrusted user input.
+
+        Args:
+            property_path: The property to compare (e.g., "p.name")
+            value: The value to compare against (will be escaped)
+        """
+        formatted = PatternBuilder._format_value(value)
+        self._conditions.append(f"{property_path} <> {formatted}")
+        return self
+
+    def safe_greater_than(self, property_path: str, value: Any) -> "PredicateBuilder":
+        """
+        Add a greater than condition with safe value escaping.
+
+        Args:
+            property_path: The property to compare (e.g., "p.age")
+            value: The value to compare against (will be escaped)
+        """
+        formatted = PatternBuilder._format_value(value)
+        self._conditions.append(f"{property_path} > {formatted}")
+        return self
+
+    def safe_less_than(self, property_path: str, value: Any) -> "PredicateBuilder":
+        """
+        Add a less than condition with safe value escaping.
+
+        Args:
+            property_path: The property to compare (e.g., "p.age")
+            value: The value to compare against (will be escaped)
+        """
+        formatted = PatternBuilder._format_value(value)
+        self._conditions.append(f"{property_path} < {formatted}")
+        return self
+
     def in_(self, expr: str, values: List[Any]) -> "PredicateBuilder":
-        """Add an IN condition."""
+        """
+        Add an IN condition.
+
+        Note: Values are escaped via _format_value(), making this safe
+        for user input in the values list. The expr parameter should
+        still be trusted input (e.g., a property path).
+        """
         formatted = [PatternBuilder._format_value(v) for v in values]
         self._conditions.append(f"{expr} IN [{', '.join(formatted)}]")
         return self
 
     def is_null(self, expr: str) -> "PredicateBuilder":
-        """Add an IS NULL condition."""
+        """
+        Add an IS NULL condition.
+
+        Warning:
+            The expr parameter is inserted directly without escaping.
+            Only use trusted property paths (e.g., "p.email").
+        """
         self._conditions.append(f"{expr} IS NULL")
         return self
 
     def is_not_null(self, expr: str) -> "PredicateBuilder":
-        """Add an IS NOT NULL condition."""
+        """
+        Add an IS NOT NULL condition.
+
+        Warning:
+            The expr parameter is inserted directly without escaping.
+            Only use trusted property paths (e.g., "p.email").
+        """
         self._conditions.append(f"{expr} IS NOT NULL")
         return self
 
     def exists(self, pattern: str) -> "PredicateBuilder":
-        """Add an EXISTS condition."""
+        """
+        Add an EXISTS condition.
+
+        Warning:
+            The pattern parameter is inserted directly without escaping.
+            Only use trusted patterns built programmatically.
+        """
         self._conditions.append(f"EXISTS {{ {pattern} }}")
         return self
 

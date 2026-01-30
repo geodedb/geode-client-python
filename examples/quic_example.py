@@ -2,9 +2,15 @@
 Comprehensive QUIC client example for Geode.
 
 Demonstrates all features of the Python QUIC client.
+
+Note: For authentication examples, set environment variables:
+  - GEODE_TEST_USERNAME: Username for testing (default: testuser)
+  - GEODE_TEST_PASSWORD: Password for testing (REQUIRED - no default for security)
+  - GEODE_TEST_EMAIL: Email for testing (default: test@example.com)
 """
 
 import asyncio
+import os
 from geode_client import Client, AuthClient, ConnectionPool, QueryBuilder
 
 
@@ -151,6 +157,16 @@ async def authentication_example():
     """Example of authentication features."""
     print("\n=== Authentication Example ===\n")
 
+    # Get credentials from environment variables (never hardcode in production)
+    test_username = os.environ.get("GEODE_TEST_USERNAME", "testuser")
+    test_password = os.environ.get("GEODE_TEST_PASSWORD")
+    test_email = os.environ.get("GEODE_TEST_EMAIL", "test@example.com")
+
+    if not test_password:
+        print("ERROR: GEODE_TEST_PASSWORD environment variable is required")
+        print("Set it with: export GEODE_TEST_PASSWORD='your-secure-password'")
+        return
+
     client = Client(host="127.0.0.1", port=8443, skip_verify=True)
 
     async with client.connection() as conn:
@@ -159,18 +175,18 @@ async def authentication_example():
         try:
             # Create a user
             user = await auth.create_user(
-                username="testuser",
-                email="test@example.com",
-                password="secure_password123",
+                username=test_username,
+                email=test_email,
+                password=test_password,
                 roles=["user"],
                 metadata={"department": "engineering"}
             )
             print(f"Created user: {user.username} (ID: {user.id})")
 
             # Login
-            session = await auth.login("testuser", "secure_password123")
+            session = await auth.login(test_username, test_password)
             print(f"Logged in: {session.username}")
-            print(f"  Token: {session.token[:30]}...")
+            # Note: Never log or print session tokens in production code
             print(f"  Roles: {session.roles}")
             print(f"  Expires: {session.expires_at}")
 
