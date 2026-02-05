@@ -8,13 +8,13 @@ Usage: python benchmarks/benchmark.py --host localhost --port 3141 --workers 10 
 import argparse
 import asyncio
 import json
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List
 
-import sys
-sys.path.insert(0, '.')
+sys.path.insert(0, ".")
 
 from geode_client import Client
 
@@ -26,7 +26,9 @@ class WorkerResult:
     failed: int
 
 
-async def run_worker(host: str, port: int, queries: int, skip_verify: bool) -> WorkerResult:
+async def run_worker(
+    host: str, port: int, queries: int, skip_verify: bool
+) -> WorkerResult:
     """Run benchmark queries on a single worker."""
     latencies = []
     successful = 0
@@ -58,13 +60,15 @@ async def run_worker(host: str, port: int, queries: int, skip_verify: bool) -> W
 
 
 async def main():
-    parser = argparse.ArgumentParser(description='Geode Python benchmark')
-    parser.add_argument('--host', default='localhost', help='Server host')
-    parser.add_argument('--port', type=int, default=3141, help='Server port')
-    parser.add_argument('--workers', type=int, default=10, help='Number of workers')
-    parser.add_argument('--queries', type=int, default=1000, help='Queries per worker')
-    parser.add_argument('--json', action='store_true', help='JSON output')
-    parser.add_argument('--insecure', action='store_true', default=True, help='Skip TLS verification')
+    parser = argparse.ArgumentParser(description="Geode Python benchmark")
+    parser.add_argument("--host", default="localhost", help="Server host")
+    parser.add_argument("--port", type=int, default=3141, help="Server port")
+    parser.add_argument("--workers", type=int, default=10, help="Number of workers")
+    parser.add_argument("--queries", type=int, default=1000, help="Queries per worker")
+    parser.add_argument("--json", action="store_true", help="JSON output")
+    parser.add_argument(
+        "--insecure", action="store_true", default=True, help="Skip TLS verification"
+    )
     args = parser.parse_args()
 
     start = time.perf_counter()

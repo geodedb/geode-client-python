@@ -4,11 +4,11 @@ This document provides guidance for Claude Code and developers working on the Ge
 
 ## Project Overview
 
-**geode-client-python** is an async Python client library for [Geode](https://gitlab.com/devnw/codepros/geode/geode) graph database. It communicates via QUIC+TLS on port 3141 using a JSON line protocol.
+**geode-client-python** is an async Python client library for [Geode](https://gitlab.com/devnw/codepros/geode/geode) graph database. It communicates via QUIC+TLS or gRPC using protobuf wire format.
 
 **Status**: Production-ready with comprehensive test coverage
 **Python Version**: 3.9+
-**Primary Dependencies**: aioquic (QUIC support)
+**Primary Dependencies**: aioquic (QUIC), grpcio (gRPC), protobuf (wire format)
 
 ## Quick Reference
 
@@ -29,7 +29,7 @@ pip install -e ".[dev,integration,benchmark,property]"
 ### Test Commands
 
 ```bash
-# Run all unit tests
+# Run all unit tests (537 tests)
 pytest tests/unit/
 
 # Run with coverage
@@ -38,8 +38,15 @@ pytest tests/unit/ --cov=geode_client --cov-report=term-missing
 # Run specific test file
 pytest tests/unit/test_types.py -v
 
-# Run integration tests (requires Docker)
+# Run integration tests (requires Docker or external server)
 pytest tests/integration/ -m integration
+
+# Run integration tests with specific transport
+GEODE_TRANSPORT=quic pytest tests/integration/ -m integration
+GEODE_TRANSPORT=grpc pytest tests/integration/ -m integration
+
+# Connect to external server instead of Docker
+GEODE_HOST=192.168.1.100 GEODE_PORT=3141 pytest tests/integration/ -m integration
 
 # Run property-based tests
 pytest tests/property/ -v
@@ -74,21 +81,32 @@ geode-client-python/
 ├── geode_client/           # Main package
 │   ├── __init__.py         # Public API exports
 │   ├── client.py           # Client, Connection, Page classes
+│   ├── transport.py        # Transport abstraction (QUIC, gRPC)
+│   ├── proto/              # Generated protobuf code
+│   │   ├── __init__.py     # Protobuf message exports
+│   │   ├── geode_pb2.py    # Generated protobuf messages
+│   │   └── geode_pb2_grpc.py # Generated gRPC stubs
 │   ├── types.py            # Value type system (23 types)
 │   ├── query_builder.py    # QueryBuilder, PatternBuilder, PredicateBuilder
 │   ├── pool.py             # ConnectionPool for concurrent workloads
 │   ├── auth.py             # AuthClient for RBAC/RLS
 │   └── validate.py         # Input validation functions
+├── proto/                  # Canonical protobuf schema
+│   └── geode.proto         # Synced from server
+├── scripts/
+│   └── generate_proto.sh   # Regenerate protobuf code
 ├── tests/
-│   ├── unit/               # Unit tests (377 tests)
+│   ├── unit/               # Unit tests (537 tests)
 │   │   ├── test_types.py
 │   │   ├── test_query_builder.py
 │   │   ├── test_pool.py
 │   │   ├── test_config.py
+│   │   ├── test_transport.py  # DSN parsing tests
+│   │   ├── test_protobuf.py   # Protobuf roundtrip tests
 │   │   ├── test_error.py
 │   │   └── test_validate.py
 │   ├── integration/        # Integration tests (119 tests)
-│   │   ├── conftest.py     # Docker container management
+│   │   ├── conftest.py     # Docker container management (QUIC + gRPC)
 │   │   ├── test_basic_operations.py
 │   │   ├── test_node_crud.py
 │   │   ├── test_relationships.py
@@ -124,10 +142,32 @@ Core client functionality:
 - **`Savepoint`**: Transaction savepoint for partial rollback.
 
 **Error Classes**:
+
 - `GeodeError` - Base exception
 - `GeodeConnectionError` - Connection failures
 - `QueryError` - Query execution failures
 - `AuthError` - Authentication failures
+
+### geode_client/transport.py
+
+Transport abstraction layer:
+
+- **`TransportType`**: Enum for transport selection (`QUIC`, `GRPC`)
+- **`TransportConfig`**: Configuration dataclass for transport settings
+- **`Transport`**: Abstract base class for transports
+- **`QuicTransport`**: QUIC+TLS transport implementation (aioquic)
+- **`GrpcTransport`**: gRPC transport implementation (grpcio)
+- **`parse_dsn()`**: Parse DSN URLs (`quic://`, `grpc://`)
+- **`create_transport()`**: Factory function for transport creation
+- **`UnsupportedSchemeError`**: Exception for invalid DSN schemes
+
+### geode_client/proto/
+
+Generated protobuf code (from `proto/geode.proto`):
+
+- **Message types**: `ClientPacket`, `ServerPacket`, `HelloRequest`, `ExecuteRequest`, etc.
+- **gRPC stubs**: `GeodeServiceStub` for gRPC client
+- **Regenerate**: Run `scripts/generate_proto.sh`
 
 ### geode_client/types.py
 
@@ -192,56 +232,52 @@ Input validation:
 
 ## Wire Protocol Reference
 
-### Transport
+### Transports
+
+**QUIC Transport** (default):
 
 - **Protocol**: QUIC over UDP
-- **Port**: 3141 (standard) or 8443 (alternative)
+- **Port**: 3141 (default)
 - **TLS**: Required (TLS 1.3)
 - **ALPN**: `geode/1`
 
+**gRPC Transport**:
+
+- **Protocol**: gRPC over HTTP/2
+- **Port**: 50051 (default)
+- **TLS**: Optional (can be disabled for development)
+
 ### Message Format
 
-JSON objects, one per line (newline-delimited JSON):
+Protobuf with 4-byte big-endian length prefix:
 
-```json
-{"type": "MESSAGE_TYPE", "field": "value"}\n
+```
+[4 bytes: message length][protobuf message bytes]
 ```
 
-### Client Messages
+### DSN URL Formats
 
-```json
-// HELLO - Connection handshake
-{"type": "HELLO", "hello_name": "geode-python", "hello_ver": "0.1.0", "conformance": "min", "page_size": 1000}
-
-// RUN_GQL - Execute query
-{"type": "RUN_GQL", "text": "RETURN 1 AS x", "params": {"name": "value"}}
-
-// PULL - Fetch results
-{"type": "PULL", "request_id": 1, "page_size": 1000}
-
-// Transaction control
-{"type": "BEGIN"}
-{"type": "COMMIT"}
-{"type": "ROLLBACK"}
-{"type": "SAVEPOINT", "name": "sp1"}
-{"type": "ROLLBACK_TO", "name": "sp1"}
+```
+quic://host:port?param=value   # QUIC transport (default port 3141)
+grpc://host:port?param=value   # gRPC transport (default port 50051)
 ```
 
-### Server Responses
+### Protobuf Messages
 
-```json
-// HELLO response
-{"type": "HELLO", "server_name": "geode", "server_ver": "0.18.0"}
+Client messages are wrapped in `ClientPacket` -> `QuicClientMessage`:
 
-// SCHEMA - Column information
-{"result": {"type": "SCHEMA", "columns": [{"name": "x", "type": "INT"}]}}
+- `HelloRequest` - Connection handshake
+- `ExecuteRequest` - Execute query with parameters
+- `PullRequest` - Fetch results
+- `BeginRequest` / `CommitRequest` / `RollbackRequest` - Transaction control
+- `PingRequest` - Keep-alive
 
-// BINDINGS - Result rows
-{"result": {"type": "BINDINGS", "rows": [{"x": 1}], "final": true}}
+Server responses are wrapped in `ServerPacket` -> `QuicServerMessage`:
 
-// ERROR - Error response
-{"result": {"type": "ERROR", "code": "SYNTAX_ERROR", "message": "..."}}
-```
+- `HelloResponse` - Handshake response with session ID
+- `ExecutionResponse` - Query results (schema, data pages, errors)
+- `PullResponse` - Additional result pages
+- `PingResponse` - Ping acknowledgment
 
 ## Common Patterns
 
@@ -393,23 +429,35 @@ def test_decode_int_roundtrip(value):
 ### Import Errors
 
 ```bash
-pip install aioquic
+pip install aioquic protobuf grpcio
 ```
 
 ### Connection Refused
 
 Ensure Geode server is running:
+
 ```bash
+# QUIC transport
 ./geode serve --listen 0.0.0.0:3141
+
+# gRPC transport
+./geode serve --grpc-listen 0.0.0.0:50051
 ```
 
 ### TLS Errors
 
 For development, use `skip_verify=True`. For production, provide CA certificate.
 
+For gRPC without TLS (development only):
+
+```python
+client = Client.from_url("grpc://localhost:50051?tls=0")
+```
+
 ### Timeout Errors
 
 Increase timeout or check network connectivity:
+
 ```python
 pool = ConnectionPool(timeout=60.0, ...)
 ```
@@ -417,9 +465,13 @@ pool = ConnectionPool(timeout=60.0, ...)
 ## Dependencies
 
 ### Required
-- `aioquic>=0.9.0` - QUIC implementation
+
+- `aioquic>=0.9.0` - QUIC transport implementation
+- `protobuf>=4.21.0` - Protobuf wire format
+- `grpcio>=1.50.0` - gRPC transport implementation
 
 ### Development
+
 - `pytest>=7.0.0` - Testing
 - `pytest-asyncio>=0.21.0` - Async test support
 - `pytest-cov>=4.0.0` - Coverage

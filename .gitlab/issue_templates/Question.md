@@ -8,11 +8,13 @@
 <!-- Describe what you've already attempted -->
 
 ## Code Example
+
 ```python
 # Relevant code if applicable
 ```
 
 ## Environment
+
 - **Python Version**:
 - **Library Version**:
 

@@ -33,9 +33,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from .client import Connection, AuthError, SecurityWarning
 from . import validate
-
+from .client import AuthError, Connection, SecurityWarning
 
 # Rate limiting configuration
 _DEFAULT_MAX_ATTEMPTS = 5

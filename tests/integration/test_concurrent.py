@@ -7,9 +7,10 @@ Tests cover:
 - Concurrent connection handling
 """
 
-import pytest
 import asyncio
 import uuid
+
+import pytest
 
 from geode_client import ConnectionPool
 
@@ -91,7 +92,7 @@ async def test_pool_concurrent_acquires(pool):
 @pytest.mark.asyncio
 async def test_pool_connection_reuse(pool):
     """Test that pool connections are reused."""
-    initial_size = pool.size
+    _initial_size = pool.size  # noqa: F841 - stored for potential future assertions
 
     # Acquire and release multiple times
     for _ in range(10):
@@ -150,6 +151,7 @@ async def test_concurrent_writes(geode_host, geode_port):
     )
 
     async with pool:
+
         async def create_node(idx: int):
             async with pool.acquire() as conn:
                 await conn.execute(

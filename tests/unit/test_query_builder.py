@@ -1,8 +1,9 @@
 """Unit tests for Geode query builder."""
 
 import pytest
-from geode_client import QueryBuilder, PatternBuilder, PredicateBuilder, EdgeDirection
-from geode_client.query_builder import find_friends, create_person, find_shortest_path
+
+from geode_client import EdgeDirection, PatternBuilder, PredicateBuilder, QueryBuilder
+from geode_client.query_builder import create_person, find_friends, find_shortest_path
 
 
 class TestQueryBuilderBasic:
@@ -63,7 +64,12 @@ class TestQueryBuilderOptionalMatch:
 
     def test_optional_match(self):
         """Test OPTIONAL MATCH clause."""
-        qb = QueryBuilder().match("(p:Person)").optional_match("(p)-[:KNOWS]->(friend)").return_("p", "friend")
+        qb = (
+            QueryBuilder()
+            .match("(p:Person)")
+            .optional_match("(p)-[:KNOWS]->(friend)")
+            .return_("p", "friend")
+        )
         text, _ = qb.build()
         assert "MATCH (p:Person)" in text
         assert "OPTIONAL MATCH (p)-[:KNOWS]->(friend)" in text
@@ -86,7 +92,12 @@ class TestQueryBuilderWhere:
 
     def test_where_compound(self):
         """Test compound WHERE clause."""
-        qb = QueryBuilder().match("(n)").where("n.age > 25 AND n.name = 'Alice'").return_("n")
+        qb = (
+            QueryBuilder()
+            .match("(n)")
+            .where("n.age > 25 AND n.name = 'Alice'")
+            .return_("n")
+        )
         text, _ = qb.build()
         assert "AND" in text
 
@@ -102,16 +113,23 @@ class TestQueryBuilderWith:
 
     def test_with_basic(self):
         """Test basic WITH clause."""
-        qb = QueryBuilder().match("(n)").with_("n", "count(*) AS cnt").return_("n", "cnt")
+        qb = (
+            QueryBuilder()
+            .match("(n)")
+            .with_("n", "count(*) AS cnt")
+            .return_("n", "cnt")
+        )
         text, _ = qb.build()
         assert "WITH n, count(*) AS cnt" in text
 
     def test_with_aggregation(self):
         """Test WITH with aggregation."""
-        qb = (QueryBuilder()
-              .match("(n:Person)")
-              .with_("n.city AS city", "count(n) AS cnt")
-              .return_("city", "cnt"))
+        qb = (
+            QueryBuilder()
+            .match("(n:Person)")
+            .with_("n.city AS city", "count(n) AS cnt")
+            .return_("city", "cnt")
+        )
         text, _ = qb.build()
         assert "WITH n.city AS city, count(n) AS cnt" in text
 
@@ -127,7 +145,12 @@ class TestQueryBuilderOrderBy:
 
     def test_order_by_multiple(self):
         """Test multiple ORDER BY."""
-        qb = QueryBuilder().match("(n)").return_("n").order_by("n.age DESC", "n.name ASC")
+        qb = (
+            QueryBuilder()
+            .match("(n)")
+            .return_("n")
+            .order_by("n.age DESC", "n.name ASC")
+        )
         text, _ = qb.build()
         assert "ORDER BY n.age DESC, n.name ASC" in text
 
@@ -234,10 +257,12 @@ class TestQueryBuilderCreate:
 
     def test_create_relationship(self):
         """Test CREATE relationship."""
-        qb = (QueryBuilder()
-              .match("(a:Person {name: 'Alice'})")
-              .match("(b:Person {name: 'Bob'})")
-              .create("(a)-[:KNOWS]->(b)"))
+        qb = (
+            QueryBuilder()
+            .match("(a:Person {name: 'Alice'})")
+            .match("(b:Person {name: 'Bob'})")
+            .create("(a)-[:KNOWS]->(b)")
+        )
         text, _ = qb.build()
         assert "CREATE (a)-[:KNOWS]->(b)" in text
 
@@ -289,10 +314,7 @@ class TestQueryBuilderUnion:
 
     def test_union(self):
         """Test UNION clause."""
-        qb = (QueryBuilder()
-              .return_("1 AS x")
-              .union()
-              .return_("2 AS x"))
+        qb = QueryBuilder().return_("1 AS x").union().return_("2 AS x")
         text, _ = qb.build()
         assert "UNION" in text
 
@@ -302,10 +324,12 @@ class TestQueryBuilderGroupBy:
 
     def test_group_by(self):
         """Test GROUP BY clause."""
-        qb = (QueryBuilder()
-              .match("(n:Person)")
-              .return_("n.city", "count(*)")
-              .group_by("n.city"))
+        qb = (
+            QueryBuilder()
+            .match("(n:Person)")
+            .return_("n.city", "count(*)")
+            .group_by("n.city")
+        )
         text, _ = qb.build()
         assert "GROUP BY n.city" in text
 
@@ -315,21 +339,25 @@ class TestQueryBuilderParameters:
 
     def test_with_param(self):
         """Test adding single parameter."""
-        qb = (QueryBuilder()
-              .match("(n:Person {name: $name})")
-              .return_("n")
-              .with_param("name", "Alice"))
+        qb = (
+            QueryBuilder()
+            .match("(n:Person {name: $name})")
+            .return_("n")
+            .with_param("name", "Alice")
+        )
         text, params = qb.build()
         assert "$name" in text
         assert params == {"name": "Alice"}
 
     def test_with_params(self):
         """Test adding multiple parameters."""
-        qb = (QueryBuilder()
-              .match("(n:Person)")
-              .where("n.age > $minAge AND n.age < $maxAge")
-              .return_("n")
-              .with_params({"minAge": 25, "maxAge": 65}))
+        qb = (
+            QueryBuilder()
+            .match("(n:Person)")
+            .where("n.age > $minAge AND n.age < $maxAge")
+            .return_("n")
+            .with_params({"minAge": 25, "maxAge": 65})
+        )
         text, params = qb.build()
         assert params == {"minAge": 25, "maxAge": 65}
 
@@ -351,14 +379,16 @@ class TestQueryBuilderComplex:
 
     def test_full_query(self):
         """Test complex query with all clauses."""
-        qb = (QueryBuilder()
-              .match("(p:Person)")
-              .where("p.age > $minAge")
-              .with_("p.city AS city", "count(p) AS cnt")
-              .return_("city", "cnt")
-              .order_by("cnt DESC")
-              .limit(10)
-              .with_param("minAge", 25))
+        qb = (
+            QueryBuilder()
+            .match("(p:Person)")
+            .where("p.age > $minAge")
+            .with_("p.city AS city", "count(p) AS cnt")
+            .return_("city", "cnt")
+            .order_by("cnt DESC")
+            .limit(10)
+            .with_param("minAge", 25)
+        )
         text, params = qb.build()
 
         assert "MATCH (p:Person)" in text
@@ -371,11 +401,13 @@ class TestQueryBuilderComplex:
 
     def test_chained_matches(self):
         """Test chained MATCH clauses."""
-        qb = (QueryBuilder()
-              .match("(a:Person {name: 'Alice'})")
-              .match("(b:Person {name: 'Bob'})")
-              .match("(a)-[r:KNOWS]->(b)")
-              .return_("r"))
+        qb = (
+            QueryBuilder()
+            .match("(a:Person {name: 'Alice'})")
+            .match("(b:Person {name: 'Bob'})")
+            .match("(a)-[r:KNOWS]->(b)")
+            .return_("r")
+        )
         text, _ = qb.build()
         # All matches should be present
         assert text.count("MATCH") == 3
@@ -414,13 +446,16 @@ class TestPatternBuilderNode:
 
     def test_node_property_types(self):
         """Test various property types."""
-        pb = PatternBuilder().node("n", properties={
-            "name": "Alice",
-            "age": 30,
-            "active": True,
-            "score": 3.14,
-            "nothing": None,
-        })
+        pb = PatternBuilder().node(
+            "n",
+            properties={
+                "name": "Alice",
+                "age": 30,
+                "active": True,
+                "score": 3.14,
+                "nothing": None,
+            },
+        )
         result = pb.build()
         assert "'Alice'" in result
         assert "30" in result
@@ -433,7 +468,9 @@ class TestPatternBuilderNode:
         pb = PatternBuilder().node("n", "Person", {"name": "$name"})
         result = pb.build()
         assert "$name" in result
-        assert "'" not in result.split("$name")[0].split("name:")[-1]  # No quote before $
+        assert (
+            "'" not in result.split("$name")[0].split("name:")[-1]
+        )  # No quote before $
 
 
 class TestPatternBuilderEdge:
@@ -441,53 +478,55 @@ class TestPatternBuilderEdge:
 
     def test_edge_outgoing(self):
         """Test outgoing edge."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge("r", "KNOWS", EdgeDirection.OUTGOING)
-              .node("b"))
+        pb = (
+            PatternBuilder()
+            .node("a")
+            .edge("r", "KNOWS", EdgeDirection.OUTGOING)
+            .node("b")
+        )
         assert pb.build() == "(a)-[r:KNOWS]->(b)"
 
     def test_edge_incoming(self):
         """Test incoming edge."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge("r", "KNOWS", EdgeDirection.INCOMING)
-              .node("b"))
+        pb = (
+            PatternBuilder()
+            .node("a")
+            .edge("r", "KNOWS", EdgeDirection.INCOMING)
+            .node("b")
+        )
         assert pb.build() == "(a)<-[r:KNOWS](b)"
 
     def test_edge_undirected(self):
         """Test undirected edge."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge("r", "KNOWS", EdgeDirection.UNDIRECTED)
-              .node("b"))
+        pb = (
+            PatternBuilder()
+            .node("a")
+            .edge("r", "KNOWS", EdgeDirection.UNDIRECTED)
+            .node("b")
+        )
         assert pb.build() == "(a)-[r:KNOWS]-(b)"
 
     def test_edge_anonymous(self):
         """Test anonymous edge."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge()
-              .node("b"))
+        pb = PatternBuilder().node("a").edge().node("b")
         result = pb.build()
         assert "(a)-" in result
         assert "->(b)" in result
 
     def test_edge_type_only(self):
         """Test edge with type only."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge(edge_type="KNOWS")
-              .node("b"))
+        pb = PatternBuilder().node("a").edge(edge_type="KNOWS").node("b")
         result = pb.build()
         assert "[:KNOWS]" in result
 
     def test_edge_with_properties(self):
         """Test edge with properties."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge("r", "KNOWS", EdgeDirection.OUTGOING, {"since": 2020})
-              .node("b"))
+        pb = (
+            PatternBuilder()
+            .node("a")
+            .edge("r", "KNOWS", EdgeDirection.OUTGOING, {"since": 2020})
+            .node("b")
+        )
         result = pb.build()
         assert "since:" in result
         assert "2020" in result
@@ -498,41 +537,49 @@ class TestPatternBuilderVariableLength:
 
     def test_variable_length_unbounded(self):
         """Test unbounded variable length."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge("", "KNOWS", EdgeDirection.UNDIRECTED)
-              .variable_length()
-              .node("b"))
+        pb = (
+            PatternBuilder()
+            .node("a")
+            .edge("", "KNOWS", EdgeDirection.UNDIRECTED)
+            .variable_length()
+            .node("b")
+        )
         result = pb.build()
         assert "*]" in result
 
     def test_variable_length_min_only(self):
         """Test variable length with minimum."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge("", "KNOWS", EdgeDirection.UNDIRECTED)
-              .variable_length(min_hops=2)
-              .node("b"))
+        pb = (
+            PatternBuilder()
+            .node("a")
+            .edge("", "KNOWS", EdgeDirection.UNDIRECTED)
+            .variable_length(min_hops=2)
+            .node("b")
+        )
         result = pb.build()
         assert "*2..]" in result
 
     def test_variable_length_range(self):
         """Test variable length with range."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge("", "KNOWS", EdgeDirection.UNDIRECTED)
-              .variable_length(min_hops=1, max_hops=5)
-              .node("b"))
+        pb = (
+            PatternBuilder()
+            .node("a")
+            .edge("", "KNOWS", EdgeDirection.UNDIRECTED)
+            .variable_length(min_hops=1, max_hops=5)
+            .node("b")
+        )
         result = pb.build()
         assert "*1..5]" in result
 
     def test_variable_length_exact(self):
         """Test variable length exact (min=max)."""
-        pb = (PatternBuilder()
-              .node("a")
-              .edge("", "KNOWS", EdgeDirection.UNDIRECTED)
-              .variable_length(min_hops=3, max_hops=3)
-              .node("b"))
+        pb = (
+            PatternBuilder()
+            .node("a")
+            .edge("", "KNOWS", EdgeDirection.UNDIRECTED)
+            .variable_length(min_hops=3, max_hops=3)
+            .node("b")
+        )
         result = pb.build()
         assert "*3..3]" in result
 
@@ -542,12 +589,14 @@ class TestPatternBuilderComplex:
 
     def test_path_pattern(self):
         """Test multi-hop path pattern."""
-        pb = (PatternBuilder()
-              .node("a", "Person")
-              .edge("", "KNOWS", EdgeDirection.OUTGOING)
-              .node("b", "Person")
-              .edge("", "WORKS_AT", EdgeDirection.OUTGOING)
-              .node("c", "Company"))
+        pb = (
+            PatternBuilder()
+            .node("a", "Person")
+            .edge("", "KNOWS", EdgeDirection.OUTGOING)
+            .node("b", "Person")
+            .edge("", "WORKS_AT", EdgeDirection.OUTGOING)
+            .node("c", "Company")
+        )
         result = pb.build()
         assert "(a:Person)" in result
         assert "(b:Person)" in result
@@ -646,25 +695,27 @@ class TestPredicateBuilderCombinations:
 
     def test_build_and(self):
         """Test combining with AND."""
-        pb = (PredicateBuilder()
-              .greater_than("n.age", "25")
-              .less_than("n.age", "65"))
+        pb = PredicateBuilder().greater_than("n.age", "25").less_than("n.age", "65")
         assert pb.build_and() == "n.age > 25 AND n.age < 65"
 
     def test_build_or(self):
         """Test combining with OR."""
-        pb = (PredicateBuilder()
-              .equals("n.status", "'ACTIVE'")
-              .equals("n.status", "'PENDING'"))
+        pb = (
+            PredicateBuilder()
+            .equals("n.status", "'ACTIVE'")
+            .equals("n.status", "'PENDING'")
+        )
         assert pb.build_or() == "n.status = 'ACTIVE' OR n.status = 'PENDING'"
 
     def test_multiple_conditions(self):
         """Test multiple conditions."""
-        pb = (PredicateBuilder()
-              .greater_than("n.age", "25")
-              .less_than("n.age", "65")
-              .is_not_null("n.email")
-              .equals("n.active", "true"))
+        pb = (
+            PredicateBuilder()
+            .greater_than("n.age", "25")
+            .less_than("n.age", "65")
+            .is_not_null("n.email")
+            .equals("n.active", "true")
+        )
         result = pb.build_and()
         assert result.count(" AND ") == 3
 
@@ -925,10 +976,12 @@ class TestPredicateBuilderSafeMethods:
 
     def test_safe_methods_chaining(self):
         """Test that safe methods can be chained."""
-        pb = (PredicateBuilder()
-              .safe_greater_than("n.age", 18)
-              .safe_less_than("n.age", 65)
-              .safe_equals("n.active", True))
+        pb = (
+            PredicateBuilder()
+            .safe_greater_than("n.age", 18)
+            .safe_less_than("n.age", 65)
+            .safe_equals("n.active", True)
+        )
         result = pb.build_and()
         assert "n.age > 18" in result
         assert "n.age < 65" in result

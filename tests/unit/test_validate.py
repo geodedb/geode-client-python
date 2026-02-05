@@ -3,7 +3,8 @@ Unit tests for the validation module.
 """
 
 import pytest
-from geode_client import validate, ValidationError
+
+from geode_client import ValidationError, validate
 
 
 class TestQueryValidation:

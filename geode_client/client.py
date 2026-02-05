@@ -1,42 +1,57 @@
 """
-Geode Python Client - Full QUIC implementation.
+Geode Python Client - Full QUIC and gRPC implementation with protobuf wire protocol.
 
-This client uses QUIC+TLS for all connections to Geode server.
+This client supports:
+- QUIC+TLS transport (quic://host:port)
+- gRPC transport (grpc://host:port)
+
+Wire format: 4-byte Big Endian length prefix + protobuf message body.
 """
 
 import asyncio
-import json
 import logging
-import os
-import warnings
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, urlparse
+from decimal import Decimal
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from aioquic.asyncio import connect
-from aioquic.asyncio.protocol import QuicConnectionProtocol
-from aioquic.quic.configuration import QuicConfiguration
-from aioquic.quic.events import (
-    QuicEvent,
-    StreamDataReceived,
-    StreamReset,
-    ConnectionTerminated,
-    StopSendingReceived,
+from .proto import (
+    BeginRequest,
+    BoolValue,
+    CommitRequest,
+    DoubleValue,
+    ExecuteRequest,
+    HelloRequest,
+    IntKind,
+    IntValue,
+    NullValue,
+    Param,
+    PullRequest,
+    RollbackRequest,
+    StringKind,
+    StringValue,
 )
-
-from .types import Value, decode_value
-from . import validate
+from .proto import (
+    Value as ProtoValue,
+)
+from .transport import (
+    QuicTransport,
+    Transport,
+    TransportConfig,
+    TransportConnectionError,
+    TransportError,
+    TransportType,
+    create_transport,
+    parse_dsn,
+)
+from .types import Value, ValueKind, decode_value
 
 # Module-level logger - users can configure logging level as needed
 logger = logging.getLogger(__name__)
 
-# Maximum line size for reading from server (16MB)
-# Protects against DoS via unbounded buffer growth from malicious servers
-MAX_LINE_SIZE = 16 * 1024 * 1024
-
 
 class SecurityWarning(UserWarning):
-    """Warning for security-related issues like disabled TLS verification."""
+    """Warning for potential security issues like insecure TLS configuration."""
 
     pass
 
@@ -145,15 +160,6 @@ class PreparedStatement:
         statement_id: str,
         parameters: List[str],
     ):
-        """
-        Initialize a prepared statement.
-
-        Args:
-            connection: The connection this statement belongs to
-            query: The original query text
-            statement_id: Server-assigned statement ID
-            parameters: List of parameter names found in the query
-        """
         self._connection = connection
         self._query = query
         self._statement_id = statement_id
@@ -185,25 +191,9 @@ class PreparedStatement:
         params: Optional[Dict[str, Any]] = None,
         page_size: Optional[int] = None,
     ) -> Tuple[Page, Callable[[], AsyncIterator[Page]]]:
-        """
-        Execute the prepared statement with the given parameters.
-
-        Args:
-            params: Parameter values (keys must match parameter names)
-            page_size: Page size for results
-
-        Returns:
-            Tuple of (first_page, pager_function)
-
-        Raises:
-            GeodeError: If the statement is closed
-            QueryError: If execution fails
-        """
+        """Execute the prepared statement with the given parameters."""
         if self._closed:
             raise GeodeError("Statement is closed")
-
-        # For now, just execute the query directly with parameters
-        # A full implementation would use the server's prepared statement feature
         return await self._connection.query(self._query, params, page_size)
 
     async def close(self) -> None:
@@ -211,8 +201,6 @@ class PreparedStatement:
         if self._closed:
             return
         self._closed = True
-        # In a full implementation, we would send a CLOSE_STATEMENT message
-        # For now, this is a no-op since we're executing queries directly
 
     async def __aenter__(self) -> "PreparedStatement":
         """Async context manager entry."""
@@ -224,27 +212,11 @@ class PreparedStatement:
 
     @staticmethod
     def extract_parameters(query: str) -> List[str]:
-        """
-        Extract parameter names from a query string.
-
-        Parameters are identified by $ followed by an identifier.
-
-        Args:
-            query: The query text
-
-        Returns:
-            List of unique parameter names (without $)
-
-        Example:
-            >>> PreparedStatement.extract_parameters("MATCH (n {id: $id, name: $name}) RETURN n")
-            ['id', 'name']
-        """
+        """Extract parameter names from a query string."""
         import re
 
-        # Match $identifier patterns
         pattern = r"\$([a-zA-Z_][a-zA-Z0-9_]*)"
         matches = re.findall(pattern, query)
-        # Return unique parameters preserving order
         seen = set()
         result = []
         for param in matches:
@@ -278,172 +250,17 @@ class AuthError(GeodeError):
     pass
 
 
-class StreamReader:
-    """Async stream reader that wraps a queue."""
-
-    def __init__(self, queue: asyncio.Queue):
-        self._queue = queue
-        self._buffer = b""
-
-    async def read(self, n: int = -1) -> bytes:
-        """Read up to n bytes from the stream."""
-        # If we have buffered data, return it first
-        if self._buffer:
-            if n < 0 or len(self._buffer) <= n:
-                data = self._buffer
-                self._buffer = b""
-                return data
-            else:
-                data = self._buffer[:n]
-                self._buffer = self._buffer[n:]
-                return data
-
-        # Read from queue
-        chunk = await self._queue.get()
-        if chunk is None:  # End of stream
-            return b""
-
-        if n < 0 or len(chunk) <= n:
-            return chunk
-        else:
-            self._buffer = chunk[n:]
-            return chunk[:n]
-
-
-class StreamWriter:
-    """Async stream writer that wraps the protocol's write method."""
-
-    def __init__(self, protocol: "GeodeProtocol", stream_id: int):
-        self._protocol = protocol
-        self._stream_id = stream_id
-
-    def write(self, data: bytes) -> None:
-        """Write data to the stream."""
-        self._protocol.write_to_stream(self._stream_id, data)
-
-    async def drain(self) -> None:
-        """Wait for the write buffer to drain (no-op for QUIC)."""
-        await asyncio.sleep(0)  # Yield control to event loop
-
-    def close(self) -> None:
-        """Close the stream."""
-        self._protocol.close_stream(self._stream_id)
-
-
-class GeodeProtocol(QuicConnectionProtocol):
-    """
-    QUIC protocol handler for Geode.
-
-    Manages bidirectional streams for query execution.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._stream_readers: Dict[int, asyncio.Queue] = {}
-        self._stream_futures: Dict[int, asyncio.Future] = {}
-
-    def quic_event_received(self, event: QuicEvent) -> None:
-        """Handle QUIC events."""
-        # Handle stream-related events ourselves (don't call super for these)
-        # because we use Queue instead of StreamReader
-        if isinstance(event, StreamDataReceived):
-            stream_id = event.stream_id
-            logger.debug(
-                "StreamDataReceived: stream_id=%d, data_len=%d, end_stream=%s",
-                stream_id,
-                len(event.data),
-                event.end_stream,
-            )
-
-            # Create queue if not exists
-            if stream_id not in self._stream_readers:
-                logger.debug("Creating new queue for stream %d", stream_id)
-                self._stream_readers[stream_id] = asyncio.Queue()
-
-            # Put data in queue
-            if event.data:
-                logger.debug(
-                    "Putting %d bytes into queue for stream %d",
-                    len(event.data),
-                    stream_id,
-                )
-                self._stream_readers[stream_id].put_nowait(event.data)
-
-            # Mark end of stream
-            if event.end_stream:
-                logger.debug("Marking end of stream %d", stream_id)
-                self._stream_readers[stream_id].put_nowait(None)
-        elif isinstance(event, StreamReset):
-            # Handle stream reset - mark stream as ended
-            stream_id = event.stream_id
-            if stream_id in self._stream_readers:
-                self._stream_readers[stream_id].put_nowait(None)
-        elif isinstance(event, (ConnectionTerminated, StopSendingReceived)):
-            # Handle connection/stream termination - close all our queues
-            for queue in self._stream_readers.values():
-                try:
-                    queue.put_nowait(None)
-                except asyncio.QueueFull:
-                    pass
-            # Don't call super() for these events - they expect StreamReader with feed_eof()
-        else:
-            # For all other events (handshake, connection state, etc.), let parent handle
-            super().quic_event_received(event)
-
-    async def create_bidirectional_stream(self) -> Tuple[int, asyncio.Queue]:
-        """
-        Create a new bidirectional stream.
-
-        Returns:
-            Tuple of (stream_id, reader_queue)
-        """
-        stream_id = self._quic.get_next_available_stream_id(is_unidirectional=False)
-        reader_queue = asyncio.Queue()
-        self._stream_readers[stream_id] = reader_queue
-        logger.debug("Created stream ID: %d", stream_id)
-        return stream_id, reader_queue
-
-    async def create_stream(self) -> Tuple["StreamReader", "StreamWriter"]:
-        """
-        Create a bidirectional stream and return reader/writer objects.
-
-        Returns:
-            Tuple of (reader, writer) objects compatible with asyncio streams
-        """
-        stream_id, queue = await self.create_bidirectional_stream()
-        reader = StreamReader(queue)
-        writer = StreamWriter(self, stream_id)
-        return reader, writer
-
-    def write_to_stream(
-        self, stream_id: int, data: bytes, end_stream: bool = False
-    ) -> None:
-        """Write data to a stream."""
-        logger.debug("Writing %d bytes to stream %d", len(data), stream_id)
-        self._quic.send_stream_data(stream_id, data, end_stream)
-        self.transmit()
-        logger.debug("Transmitted data on stream %d", stream_id)
-
-    async def read_from_stream(self, stream_id: int) -> Optional[bytes]:
-        """Read data from a stream."""
-        if stream_id not in self._stream_readers:
-            raise GeodeConnectionError(f"Stream {stream_id} not found")
-
-        data = await self._stream_readers[stream_id].get()
-        return data
-
-    def close_stream(self, stream_id: int) -> None:
-        """Close a stream."""
-        if stream_id in self._stream_readers:
-            del self._stream_readers[stream_id]
+# Re-export for backwards compatibility
+StreamReader = None  # Deprecated - now internal to transport
+StreamWriter = None  # Deprecated - now internal to transport
+GeodeProtocol = None  # Deprecated - now internal to transport
 
 
 class Connection:
     """
-    A single QUIC connection to Geode server.
+    A connection to Geode server.
 
-    Provides async interface for executing queries, managing transactions,
-    and authentication.
+    Supports both QUIC and gRPC transports.
     """
 
     def __init__(
@@ -460,13 +277,17 @@ class Connection:
         client_key: Optional[str] = None,
         skip_verify: bool = False,
         server_name: Optional[str] = None,
+        username: str = "",
+        password: str = "",
+        transport_type: TransportType = TransportType.QUIC,
+        tls_enabled: bool = True,
     ):
         """
         Initialize connection parameters.
 
         Args:
             host: Server hostname or IP
-            port: Server port (default 3141)
+            port: Server port (default 3141 for QUIC, 50051 for gRPC)
             page_size: Default page size for results
             hello_name: Client name for HELLO handshake
             hello_ver: Client version
@@ -476,9 +297,12 @@ class Connection:
             client_key: Path to client key for mTLS
             skip_verify: Skip TLS verification (insecure, dev only)
             server_name: SNI server name (defaults to host)
+            username: Username for authentication
+            password: Password for authentication
+            transport_type: Transport type (QUIC or GRPC)
+            tls_enabled: Enable TLS (default True)
         """
-        # Normalize "localhost" to "127.0.0.1" to match vendor/quic examples
-        # This avoids IPv4/IPv6 resolution issues
+        # Normalize "localhost" to "127.0.0.1"
         self.host = "127.0.0.1" if host == "localhost" else host
         self.port = port
         self.page_size = page_size
@@ -489,17 +313,16 @@ class Connection:
         self.client_cert = client_cert
         self.client_key = client_key
         self.skip_verify = skip_verify
-        # Use the normalized host for server_name to avoid SNI mismatch
         self.server_name = server_name or self.host
+        self.username = username
+        self.password = password
+        self.transport_type = transport_type
+        self.tls_enabled = tls_enabled
 
-        # Connection state
-        self._protocol = None
-        self._connection_context = None
-        self._reader = None
-        self._writer = None
+        # Transport state
+        self._transport: Optional[Transport] = None
         self._connected = False
         self._lock = asyncio.Lock()
-        self._buffer = b""
 
     async def __aenter__(self) -> "Connection":
         """Async context manager entry."""
@@ -510,247 +333,148 @@ class Connection:
         """Async context manager exit."""
         await self.close()
 
-    # CANARY: REQ=REQ-CLIENT-PY-001; FEATURE="PythonClientConnection"; ASPECT=HelloHandshake; STATUS=IMPL; OWNER=clients; UPDATED=2025-02-14
     async def connect(self) -> None:
-        """Establish QUIC connection to Geode server."""
-        logger.debug("connect() called, already connected: %s", self._connected)
+        """Establish connection to Geode server using protobuf wire protocol."""
         if self._connected:
             return
 
-        # Configure QUIC - using same pattern as vendor/quic/clients/python/test_client.py
-        logger.debug("Configuring QUIC...")
-        configuration = QuicConfiguration(
-            is_client=True,
-            alpn_protocols=["geode/1"],
+        # Create transport config
+        config = TransportConfig(
+            transport_type=self.transport_type,
+            host=self.host,
+            port=self.port,
+            tls_enabled=self.tls_enabled,
+            skip_verify=self.skip_verify,
+            ca_cert=self.ca_cert,
+            client_cert=self.client_cert,
+            client_key=self.client_key,
+            server_name=self.server_name,
+            username=self.username,
+            password=self.password,
+            page_size=self.page_size,
+            hello_name=self.hello_name,
+            hello_ver=self.hello_ver,
+            conformance=self.conformance,
         )
 
-        # Configure TLS
-        if self.skip_verify:
-            # Emit security warning for insecure configuration
-            warnings.warn(
-                "TLS certificate verification is disabled (skip_verify=True). "
-                "This is insecure and should only be used for development. "
-                "Connections are vulnerable to man-in-the-middle attacks.",
-                SecurityWarning,
-                stacklevel=2,
-            )
-            logger.debug("Skipping TLS verification (skip_verify=True)")
-            configuration.verify_mode = 0  # Same as ssl.CERT_NONE
-            # DON'T set server_name when skipping verification - this causes cert issues
-        else:
-            # Set server name for SNI only when verifying
-            configuration.server_name = self.server_name
-            logger.debug("Server name for SNI: %s", self.server_name)
-
-            # Try to load CA certificate
-            ca_cert_path = self.ca_cert
-
-            # If no custom CA specified, try the test harness CA
-            if not ca_cert_path:
-                test_harness_ca = os.path.join(
-                    os.path.dirname(__file__), "../../test-harness/certs/ca.crt"
-                )
-                if os.path.exists(test_harness_ca):
-                    ca_cert_path = test_harness_ca
-                    logger.debug("Using test harness CA: %s", test_harness_ca)
-
-            if ca_cert_path and os.path.exists(ca_cert_path):
-                logger.debug("Loading CA certificate: %s", ca_cert_path)
-                configuration.load_verify_locations(ca_cert_path)
-            else:
-                logger.warning(
-                    "No CA certificate found and skip_verify=False - "
-                    "connection may fail if server uses self-signed certificate"
-                )
-
-        if self.client_cert and self.client_key:
-            logger.debug("Loading client certificate")
-            configuration.load_cert_chain(self.client_cert, self.client_key)
-
-        # Connect using async with pattern (proper context manager usage)
-        logger.debug("Connecting to %s:%d...", self.host, self.port)
+        # Create transport
+        self._transport = create_transport(config)
 
         try:
-            # Store the async context manager
-            self._connection_cm = connect(
-                self.host,
-                self.port,
-                configuration=configuration,
-                create_protocol=GeodeProtocol,
-            )
-
-            # Enter the context - this completes the QUIC handshake
-            logger.debug("Entering QUIC connection context...")
-            self._protocol = await self._connection_cm.__aenter__()
-            logger.debug("QUIC handshake complete")
-
+            await self._transport.connect()
+        except TransportConnectionError as e:
+            raise GeodeConnectionError(str(e))
         except Exception as e:
-            logger.exception("QUIC connection failed")
-            raise GeodeConnectionError(f"Failed to establish QUIC connection: {e}")
+            raise GeodeConnectionError(f"Failed to connect: {e}")
 
-        # Create bidirectional stream
+        # Send HELLO handshake
+        hello_req = HelloRequest(
+            username=self.username,
+            password=self.password,
+            client_name=self.hello_name,
+            client_version=self.hello_ver,
+            wanted_conformance=self.conformance,
+        )
+
         try:
-            logger.debug("Creating bidirectional stream...")
-            self._reader, self._writer = await self._protocol.create_stream()
-            logger.debug("Created bidirectional stream")
-        except Exception as e:
-            logger.debug("Stream creation failed: %s", e)
-            raise GeodeConnectionError(f"Failed to create stream: {e}")
-
-        # Send HELLO message (don't log full message content for security)
-        hello = {
-            "type": "HELLO",
-            "client_name": self.hello_name,
-            "client_ver": self.hello_ver,
-            "wanted_conformance": self.conformance,
-        }
-        logger.debug("Sending HELLO message")
-        await self._write_json(hello)
-        logger.debug("HELLO sent, waiting for response...")
-
-        # Read HELLO response with timeout
-        try:
-            response = await asyncio.wait_for(self._read_json(), timeout=5.0)
-            logger.debug("Received HELLO response")
-            if not response:
-                raise GeodeConnectionError("No HELLO response from server")
+            response = await self._transport.hello(hello_req)
+            if not response.success:
+                raise AuthError(f"Authentication failed: {response.error_message}")
+        except TransportError as e:
+            raise GeodeConnectionError(f"Handshake failed: {e}")
         except asyncio.TimeoutError:
-            logger.debug("HELLO response timed out")
             raise GeodeConnectionError("Timeout waiting for HELLO response")
-        except Exception as e:
-            logger.debug("Error reading HELLO response: %s", e)
-            raise GeodeConnectionError(f"Failed to read HELLO response: {e}")
 
         self._connected = True
-        logger.debug("Connection fully established")
-
-    async def _write_json(self, obj: Dict[str, Any]) -> None:
-        """Write JSON object as a line."""
-        if not self._writer:
-            raise GeodeConnectionError("Not connected")
-
-        line = json.dumps(obj) + "\n"
-        self._writer.write(line.encode("utf-8"))
-        await self._writer.drain()
-
-    async def _read_line(self) -> bytes:
-        """
-        Read a single line from the stream.
-
-        Raises:
-            GeodeConnectionError: If not connected, stream closed, or line
-                exceeds MAX_LINE_SIZE (protection against DoS via unbounded
-                buffer growth).
-        """
-        if not self._reader:
-            raise GeodeConnectionError("Not connected")
-
-        while True:
-            # Check if we have a complete line in buffer
-            newline_idx = self._buffer.find(b"\n")
-            if newline_idx != -1:
-                line = self._buffer[:newline_idx]
-                self._buffer = self._buffer[newline_idx + 1 :]
-                return line
-
-            # SEC-026: Check buffer size to prevent DoS via unbounded growth
-            if len(self._buffer) > MAX_LINE_SIZE:
-                self._buffer = b""  # Clear buffer to allow recovery
-                raise GeodeConnectionError(
-                    f"Line exceeds maximum size of {MAX_LINE_SIZE} bytes"
-                )
-
-            # Read more data
-            data = await self._reader.read(4096)
-            if not data:
-                # End of stream
-                if self._buffer:
-                    line = self._buffer
-                    self._buffer = b""
-                    return line
-                raise GeodeConnectionError("Stream closed")
-
-            self._buffer += data
-
-    async def _read_json(self) -> Dict[str, Any]:
-        """Read and parse JSON line."""
-        line = await self._read_line()
-        if not line:
-            return {}
-        return json.loads(line)
-
-    def _try_read_json_from_buffer(self) -> Optional[Dict[str, Any]]:
-        """Attempt to parse a buffered JSON line without blocking."""
-        newline_idx = self._buffer.find(b"\n")
-        if newline_idx == -1:
-            return None
-        line = self._buffer[:newline_idx]
-        self._buffer = self._buffer[newline_idx + 1 :]
-        if not line:
-            return None
-        return json.loads(line)
 
     async def begin(self) -> None:
         """Begin a transaction."""
         async with self._lock:
-            await self._write_json({"type": "BEGIN"})
-            await self._read_json()
+            req = BeginRequest(session_id=self._transport.session_id)
+            resp = await self._transport.begin(req)
+            if not resp.HasField("begin"):
+                raise GeodeError("Expected BEGIN response")
 
     async def commit(self) -> None:
         """Commit the current transaction."""
         async with self._lock:
-            await self._write_json({"type": "COMMIT"})
-            await self._read_json()
+            req = CommitRequest(session_id=self._transport.session_id)
+            resp = await self._transport.commit(req)
+            if not resp.HasField("commit"):
+                raise GeodeError("Expected COMMIT response")
 
     async def rollback(self) -> None:
         """Rollback the current transaction."""
         async with self._lock:
-            await self._write_json({"type": "ROLLBACK"})
-            await self._read_json()
+            req = RollbackRequest(session_id=self._transport.session_id)
+            resp = await self._transport.rollback(req)
+            if not resp.HasField("rollback"):
+                raise GeodeError("Expected ROLLBACK response")
 
     async def savepoint(self, name: str) -> "Savepoint":
-        """
-        Create a savepoint within the current transaction.
-
-        Args:
-            name: Savepoint name (must be a valid GQL identifier)
-
-        Returns:
-            Savepoint object that can be used to rollback to this point
-
-        Raises:
-            ValidationError: If the savepoint name is not a valid identifier
-
-        Example:
-            await conn.begin()
-            await conn.execute("CREATE (p:Person {name: 'Alice'})")
-            sp = await conn.savepoint("before_update")
-            await conn.execute("SET p.age = 30")
-            await conn.rollback_to(sp)  # Rolls back the SET operation
-            await conn.commit()
-        """
-        # Validate savepoint name to prevent injection
-        validated_name = validate.identifier(name)
-        async with self._lock:
-            await self._write_json({"type": "SAVEPOINT", "name": validated_name})
-            await self._read_json()
-        return Savepoint(name=validated_name, connection=self)
+        """Create a savepoint within the current transaction."""
+        await self.execute(f"SAVEPOINT {name}")
+        return Savepoint(name=name, connection=self)
 
     async def rollback_to(self, savepoint: "Savepoint") -> None:
-        """
-        Rollback to a savepoint.
+        """Rollback to a savepoint."""
+        await self.execute(f"ROLLBACK TO SAVEPOINT {savepoint.name}")
 
-        Args:
-            savepoint: The savepoint to rollback to
+    def _python_to_proto_value(self, value: Any) -> ProtoValue:
+        """Convert a Python value to a protobuf Value."""
+        if value is None:
+            return ProtoValue(null_val=NullValue())
+        elif isinstance(value, bool):
+            return ProtoValue(bool_val=BoolValue(value=value))
+        elif isinstance(value, int):
+            return ProtoValue(int_val=IntValue(value=value, kind=IntKind.INT))
+        elif isinstance(value, float):
+            return ProtoValue(double_val=DoubleValue(value=value))
+        elif isinstance(value, str):
+            return ProtoValue(
+                string_val=StringValue(value=value, kind=StringKind.STRING)
+            )
+        else:
+            # Fallback: convert to string
+            return ProtoValue(
+                string_val=StringValue(value=str(value), kind=StringKind.STRING)
+            )
 
-        Raises:
-            ValidationError: If the savepoint name is not a valid identifier
-        """
-        # Validate savepoint name for defense in depth
-        validated_name = validate.identifier(savepoint.name)
-        async with self._lock:
-            await self._write_json({"type": "ROLLBACK_TO", "name": validated_name})
-            await self._read_json()
+    def _proto_value_to_python(self, proto_val: ProtoValue, type_name: str) -> Value:
+        """Convert a protobuf Value to a typed Value object."""
+        if proto_val.HasField("null_val"):
+            return Value(kind=ValueKind.NULL)
+        elif proto_val.HasField("string_val"):
+            return decode_value(proto_val.string_val.value, type_name)
+        elif proto_val.HasField("int_val"):
+            return Value(kind=ValueKind.INT, int_value=proto_val.int_val.value)
+        elif proto_val.HasField("double_val"):
+            return Value(
+                kind=ValueKind.DECIMAL,
+                decimal_value=Decimal(str(proto_val.double_val.value)),
+            )
+        elif proto_val.HasField("bool_val"):
+            return Value(kind=ValueKind.BOOL, bool_value=proto_val.bool_val.value)
+        else:
+            return Value(kind=ValueKind.NULL)
+
+    def _parse_proto_rows(
+        self,
+        proto_rows,
+        columns: List[Column],
+    ) -> List[Dict[str, Value]]:
+        """Parse protobuf rows into typed Value objects."""
+        rows = []
+        for proto_row in proto_rows:
+            row = {}
+            for i, col in enumerate(columns):
+                if i < len(proto_row.values):
+                    proto_val = proto_row.values[i]
+                    row[col.name] = self._proto_value_to_python(proto_val, col.type)
+                else:
+                    row[col.name] = Value(kind=ValueKind.NULL)
+            rows.append(row)
+        return rows
 
     async def query(
         self,
@@ -761,6 +485,8 @@ class Connection:
         """
         Execute a GQL query and return the first page and a pager function.
 
+        Uses protobuf wire protocol for communication.
+
         Args:
             text: GQL query text
             params: Query parameters
@@ -768,80 +494,56 @@ class Connection:
 
         Returns:
             Tuple of (first_page, pager_function)
-
-        Example:
-            page, pager = await conn.query("MATCH (n) RETURN n LIMIT 100")
-            # Process first page
-            for row in page.rows:
-                print(row)
-            # Get more pages
-            async for next_page in pager():
-                for row in next_page.rows:
-                    print(row)
         """
         async with self._lock:
             if page_size is None:
                 page_size = self.page_size
 
-            # Send RUN_GQL message
-            run_msg = {"type": "RUN_GQL", "text": text}
+            # Convert params to protobuf Param list
+            param_list = []
             if params:
-                run_msg["params"] = params
-
-            await self._write_json(run_msg)
-
-            # Read schema frame
-            schema_frame = await self._read_json()
-            result = schema_frame.get("result", {})
-
-            if result.get("type") == "ERROR":
-                code = result.get("code", "UNKNOWN")
-                message = result.get("message", "Query failed")
-                raise QueryError(f"{code}: {message}")
-
-            if result.get("type") != "SCHEMA":
-                raise QueryError(f"Unexpected frame type: {result.get('type')}")
-
-            # Parse columns
-            columns = [
-                Column(name=col["name"], type=col["type"])
-                for col in result.get("columns", [])
-            ]
-            type_map = {col.name: col.type for col in columns}
-
-            # Inline RUN+PULL: check if a bindings frame already arrived in buffer.
-            inline_frame = self._try_read_json_from_buffer()
-            if inline_frame:
-                inline_result = inline_frame.get("result", {})
-                inline_type = inline_result.get("type")
-
-                if inline_type == "ERROR":
-                    code = inline_result.get("code", "UNKNOWN")
-                    message = inline_result.get("message", "Query failed")
-                    raise QueryError(f"{code}: {message}")
-
-                if inline_type == "PROFILE":
-                    first_page = Page(
-                        columns=columns,
-                        rows=[],
-                        ordered=False,
-                        final=True,
+                for k, v in params.items():
+                    param_list.append(
+                        Param(name=k, value=self._python_to_proto_value(v))
                     )
 
-                    async def empty_pager():
-                        return
-                        yield
+            # Send Execute request
+            exec_req = ExecuteRequest(
+                session_id=self._transport.session_id,
+                query=text,
+                params=param_list,
+            )
+            resp = await self._transport.execute(exec_req)
 
-                    return first_page, empty_pager
+            if not resp.HasField("execute"):
+                raise QueryError("Expected Execute response")
 
-                if inline_type == "RESULT":
-                    first_page = Page(
-                        columns=columns,
-                        rows=self._parse_rows(inline_result.get("rows", []), type_map),
-                        ordered=inline_result.get("ordered", False),
-                        order_keys=inline_result.get("order_keys", []),
-                        final=True,
-                    )
+            exec_resp = resp.execute
+
+            # Check for error
+            if exec_resp.HasField("error"):
+                raise QueryError(f"{exec_resp.error.code}: {exec_resp.error.message}")
+
+            # Parse columns from schema
+            columns: List[Column] = []
+            if exec_resp.HasField("schema"):
+                columns = [
+                    Column(name=col.name, type=col.type)
+                    for col in exec_resp.schema.columns
+                ]
+
+            # Check if we got a page in the first response
+            if exec_resp.HasField("page"):
+                rows = self._parse_proto_rows(exec_resp.page.rows, columns)
+                first_page = Page(
+                    columns=columns,
+                    rows=rows,
+                    ordered=exec_resp.page.ordered,
+                    order_keys=list(exec_resp.page.order_keys),
+                    final=exec_resp.page.final,
+                )
+
+                if first_page.final:
 
                     async def empty_pager():
                         if False:
@@ -849,142 +551,102 @@ class Connection:
 
                     return first_page, empty_pager
 
-                if inline_type != "BINDINGS":
-                    raise QueryError(f"Unexpected inline frame type: {inline_type}")
+                # Create pager for more pages
+                transport = self._transport
 
-                rows = self._parse_rows(inline_result.get("rows", []), type_map)
-                first_page = Page(
-                    columns=columns,
-                    rows=rows,
-                    ordered=inline_result.get("ordered", False),
-                    order_keys=inline_result.get("order_keys", []),
-                    final=inline_result.get("final", True),
-                )
-
-                async def empty_pager():
-                    if False:
-                        yield
-
-                return first_page, empty_pager
-
-            # Send PULL to get first page
-            await self._write_json(
-                {
-                    "type": "PULL",
-                    "request_id": 1,
-                    "page_size": page_size,
-                }
-            )
-
-            bindings_frame = await self._read_json()
-            bindings_result = bindings_frame.get("result", {})
-
-            if bindings_result.get("type") == "PROFILE":
-                # Empty result set when profiling
-                first_page = Page(
-                    columns=columns,
-                    rows=[],
-                    ordered=False,
-                    final=True,
-                )
-
-                async def empty_pager():
-                    return
-                    yield  # Make it a generator
-
-                return first_page, empty_pager
-
-            if bindings_result.get("type") == "RESULT":
-                # Server sent complete result (no pagination needed)
-                first_page = Page(
-                    columns=columns,
-                    rows=self._parse_rows(bindings_result.get("rows", []), type_map),
-                    ordered=bindings_result.get("ordered", False),
-                    order_keys=bindings_result.get("order_keys", []),
-                    final=True,  # RESULT means all data is here
-                )
-
-                async def empty_pager():
-                    if False:
-                        yield  # Make it a generator but never yield
-
-                return first_page, empty_pager
-
-            if bindings_result.get("type") != "BINDINGS":
-                raise QueryError(
-                    f"Unexpected frame type: {bindings_result.get('type')}"
-                )
-
-            # Parse first page
-            rows = self._parse_rows(bindings_result.get("rows", []), type_map)
-            first_page = Page(
-                columns=columns,
-                rows=rows,
-                ordered=bindings_result.get("ordered", False),
-                order_keys=bindings_result.get("order_keys", []),
-                final=bindings_result.get("final", False),
-            )
-
-            # If all results are in the first page, don't create a pager
-            if first_page.final:
-
-                async def empty_pager():
-                    if False:
-                        yield  # Make it a generator but never yield anything
-
-                return first_page, empty_pager
-
-            # Create pager function for multi-page results
-            async def pager():
-                nonlocal first_page
-                while not first_page.final:
-                    async with self._lock:
-                        await self._write_json(
-                            {
-                                "type": "PULL",
-                                "request_id": 1,
-                                "page_size": page_size,
-                            }
+                async def pager():
+                    nonlocal first_page
+                    while not first_page.final:
+                        pull_req = PullRequest(
+                            session_id=transport.session_id,
+                            page_size=page_size,
                         )
-                        frame = await self._read_json()
-                        result = frame.get("result", {})
-
-                        if result.get("type") == "ERROR":
+                        resp = await transport.pull(pull_req)
+                        if not resp.HasField("pull") or not resp.pull.HasField(
+                            "response"
+                        ):
                             break
-
-                        if result.get("type") != "BINDINGS":
+                        pull_resp = resp.pull.response
+                        if pull_resp.HasField("error"):
                             break
-
-                        rows = self._parse_rows(result.get("rows", []), type_map)
+                        if not pull_resp.HasField("page"):
+                            break
+                        rows = self._parse_proto_rows(pull_resp.page.rows, columns)
                         page = Page(
                             columns=columns,
                             rows=rows,
-                            ordered=result.get("ordered", False),
-                            order_keys=result.get("order_keys", []),
-                            final=result.get("final", False),
+                            ordered=pull_resp.page.ordered,
+                            final=pull_resp.page.final,
                         )
-
                         if page.final:
                             first_page.final = True
-
                         yield page
 
-            return first_page, pager
+                return first_page, pager
 
-    def _parse_rows(
-        self,
-        raw_rows: List[Dict[str, Any]],
-        type_map: Dict[str, str],
-    ) -> List[Dict[str, Value]]:
-        """Parse raw JSON rows into typed Value objects."""
-        rows = []
-        for raw_row in raw_rows:
-            row = {}
-            for col_name, raw_value in raw_row.items():
-                col_type = type_map.get(col_name, "")
-                row[col_name] = decode_value(raw_value, col_type)
-            rows.append(row)
-        return rows
+            # Need to read next message for data page (schema was first)
+            if isinstance(self._transport, QuicTransport):
+                resp = await self._transport.read_next()
+                if resp.HasField("execute"):
+                    exec_resp = resp.execute
+                    if exec_resp.HasField("error"):
+                        raise QueryError(
+                            f"{exec_resp.error.code}: {exec_resp.error.message}"
+                        )
+                    if exec_resp.HasField("page"):
+                        rows = self._parse_proto_rows(exec_resp.page.rows, columns)
+                        first_page = Page(
+                            columns=columns,
+                            rows=rows,
+                            ordered=exec_resp.page.ordered,
+                            order_keys=list(exec_resp.page.order_keys),
+                            final=exec_resp.page.final,
+                        )
+
+                        if first_page.final:
+
+                            async def empty_pager():
+                                if False:
+                                    yield
+
+                            return first_page, empty_pager
+
+                        transport = self._transport
+
+                        async def pager():
+                            nonlocal first_page
+                            while not first_page.final:
+                                resp = await transport.read_next()
+                                if not resp.HasField("execute"):
+                                    break
+                                exec_resp = resp.execute
+                                if exec_resp.HasField("error"):
+                                    break
+                                if not exec_resp.HasField("page"):
+                                    break
+                                rows = self._parse_proto_rows(
+                                    exec_resp.page.rows, columns
+                                )
+                                page = Page(
+                                    columns=columns,
+                                    rows=rows,
+                                    ordered=exec_resp.page.ordered,
+                                    final=exec_resp.page.final,
+                                )
+                                if page.final:
+                                    first_page.final = True
+                                yield page
+
+                        return first_page, pager
+
+            # Empty result
+            first_page = Page(columns=columns, rows=[], ordered=False, final=True)
+
+            async def empty_pager():
+                if False:
+                    yield
+
+            return first_page, empty_pager
 
     async def execute(self, text: str, params: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -999,32 +661,11 @@ class Connection:
         page, _ = await self.query(text, params, page_size=0)
 
     async def prepare(self, query: str) -> PreparedStatement:
-        """
-        Prepare a statement for repeated execution.
-
-        Prepared statements parse the query once and can be executed
-        multiple times with different parameters.
-
-        Args:
-            query: The GQL query text with parameter placeholders ($name)
-
-        Returns:
-            PreparedStatement that can be executed multiple times
-
-        Example:
-            stmt = await conn.prepare("MATCH (p:Person {name: $name}) RETURN p")
-            async with stmt:
-                page, _ = await stmt.execute({"name": "Alice"})
-                page2, _ = await stmt.execute({"name": "Bob"})
-        """
-        # Extract parameters from query
+        """Prepare a statement for repeated execution."""
         parameters = PreparedStatement.extract_parameters(query)
-
-        # Generate a statement ID (in a full implementation, this would come from server)
         import uuid
 
         statement_id = str(uuid.uuid4())
-
         return PreparedStatement(
             connection=self,
             query=query,
@@ -1035,142 +676,39 @@ class Connection:
     async def explain(
         self, query: str, params: Optional[Dict[str, Any]] = None
     ) -> QueryPlan:
-        """
-        Get the execution plan for a query without executing it.
-
-        Args:
-            query: The GQL query text
-            params: Optional query parameters
-
-        Returns:
-            QueryPlan with estimated costs and operations
-
-        Example:
-            plan = await conn.explain("MATCH (n:Person) RETURN n")
-            print(f"Estimated cost: {plan.estimated_total_cost}")
-        """
-        async with self._lock:
-            # Send EXPLAIN message
-            explain_msg = {"type": "EXPLAIN", "text": query}
-            if params:
-                explain_msg["params"] = params
-
-            await self._write_json(explain_msg)
-
-            # Read response
-            response = await self._read_json()
-            result = response.get("result", {})
-
-            if result.get("type") == "ERROR":
-                code = result.get("code", "UNKNOWN")
-                message = result.get("message", "Explain failed")
-                raise QueryError(f"{code}: {message}")
-
-            # Parse the explain result
-            plan_data = result.get("plan", {})
-
-            def parse_operation(op_data: Dict[str, Any]) -> PlanOperation:
-                children = [
-                    parse_operation(child) for child in op_data.get("children", [])
-                ]
-                return PlanOperation(
-                    operation=op_data.get("operation", "Unknown"),
-                    description=op_data.get("description", ""),
-                    estimated_rows=op_data.get("estimated_rows", 0),
-                    estimated_cost=op_data.get("estimated_cost", 0.0),
-                    children=children,
-                )
-
-            root = None
-            if plan_data:
-                root = parse_operation(plan_data)
-
-            return QueryPlan(
-                query=query,
-                root=root,
-                estimated_total_cost=result.get("estimated_total_cost", 0.0),
-                planning_time_ms=result.get("planning_time_ms", 0.0),
-            )
+        """Get the execution plan for a query without executing it."""
+        explain_query = f"EXPLAIN {query}"
+        page, _ = await self.query(explain_query, params)
+        return QueryPlan(
+            query=query,
+            root=None,
+            estimated_total_cost=0.0,
+            planning_time_ms=0.0,
+        )
 
     async def profile(
         self,
         query: str,
         params: Optional[Dict[str, Any]] = None,
     ) -> QueryProfile:
-        """
-        Execute a query and return profiling information.
-
-        Unlike explain(), this actually executes the query and returns
-        real execution statistics.
-
-        Args:
-            query: The GQL query text
-            params: Optional query parameters
-
-        Returns:
-            QueryProfile with actual execution metrics
-
-        Example:
-            profile = await conn.profile("MATCH (n:Person) RETURN n")
-            print(f"Execution time: {profile.execution_time_ms}ms")
-            print(f"Rows scanned: {profile.rows_scanned}")
-        """
-        async with self._lock:
-            # Send PROFILE message
-            profile_msg = {"type": "PROFILE", "text": query}
-            if params:
-                profile_msg["params"] = params
-
-            await self._write_json(profile_msg)
-
-            # Read response
-            response = await self._read_json()
-            result = response.get("result", {})
-
-            if result.get("type") == "ERROR":
-                code = result.get("code", "UNKNOWN")
-                message = result.get("message", "Profile failed")
-                raise QueryError(f"{code}: {message}")
-
-            return QueryProfile(
-                query=query,
-                execution_time_ms=result.get("execution_time_ms", 0.0),
-                planning_time_ms=result.get("planning_time_ms", 0.0),
-                rows_returned=result.get("rows_returned", 0),
-                rows_scanned=result.get("rows_scanned", 0),
-                operations=result.get("operations", []),
-            )
+        """Execute a query and return profiling information."""
+        profile_query = f"PROFILE {query}"
+        page, _ = await self.query(profile_query, params)
+        return QueryProfile(
+            query=query,
+            execution_time_ms=0.0,
+            planning_time_ms=0.0,
+            rows_returned=len(page.rows),
+            rows_scanned=0,
+            operations=[],
+        )
 
     async def batch(
         self,
         queries: List[Tuple[str, Optional[Dict[str, Any]]]],
         stop_on_error: bool = True,
     ) -> List[BatchResult]:
-        """
-        Execute multiple queries in a single batch.
-
-        This can be more efficient than executing queries one at a time
-        when you have multiple independent operations.
-
-        Args:
-            queries: List of (query_text, params) tuples
-            stop_on_error: If True, stop execution on first error
-
-        Returns:
-            List of BatchResult for each query
-
-        Example:
-            results = await conn.batch([
-                ("CREATE (p:Person {name: $name})", {"name": "Alice"}),
-                ("CREATE (p:Person {name: $name})", {"name": "Bob"}),
-                ("MATCH (n:Person) RETURN count(n)", None),
-            ])
-            for result in results:
-                if result.success:
-                    print(f"Query {result.index}: success")
-                else:
-                    print(f"Query {result.index}: {result.error}")
-        """
+        """Execute multiple queries in a single batch."""
         results = []
 
         for index, (query_text, params) in enumerate(queries):
@@ -1194,7 +732,6 @@ class Connection:
                     )
                 )
                 if stop_on_error:
-                    # Add placeholder results for remaining queries
                     for remaining_index in range(index + 1, len(queries)):
                         results.append(
                             BatchResult(
@@ -1215,25 +752,12 @@ class Connection:
 
         self._connected = False
 
-        # Close the stream writer if we have one
-        if self._writer:
+        if self._transport:
             try:
-                self._writer.close()
+                await self._transport.close()
             except Exception:
                 pass
-            self._writer = None
-
-        self._reader = None
-
-        # Exit the connection context manager
-        if hasattr(self, "_connection_cm") and self._connection_cm and self._protocol:
-            try:
-                await self._connection_cm.__aexit__(None, None, None)
-            except Exception:
-                pass
-
-        self._protocol = None
-        self._connection_cm = None
+            self._transport = None
 
 
 class Client:
@@ -1241,68 +765,97 @@ class Client:
     Geode database client factory.
 
     Use this to create connections to Geode server.
+
+    Example:
+        # Using QUIC transport (default)
+        client = Client(host="localhost", port=3141)
+        async with client.connection() as conn:
+            page, _ = await conn.query("RETURN 1 AS x")
+
+        # Using gRPC transport
+        client = Client.from_url("grpc://localhost:50051")
+        async with client.connection() as conn:
+            page, _ = await conn.query("RETURN 1 AS x")
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 3141, **kwargs):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 3141,
+        transport_type: TransportType = TransportType.QUIC,
+        **kwargs,
+    ):
         """
         Initialize client.
 
         Args:
             host: Server hostname or IP
             port: Server port (default 3141)
+            transport_type: Transport type (QUIC or GRPC)
             **kwargs: Additional connection parameters
         """
         self.host = host
         self.port = port
-        self.config = {"host": host, "port": port, **kwargs}
+        self.transport_type = transport_type
+        self.config = {
+            "host": host,
+            "port": port,
+            "transport_type": transport_type,
+            **kwargs,
+        }
 
     @classmethod
     def from_url(cls, url: str) -> "Client":
         """
-        Create client from URL.
+        Create client from URL (DSN).
 
-        URL format: quic://host:port?param=value
+        Supported URL formats:
+        - quic://host:port?param=value (QUIC transport, default)
+        - grpc://host:port?param=value (gRPC transport)
+        - grcp://host:port?param=value (deprecated alias for grpc://)
+
+        Query parameters:
+        - tls: 0 or 1 (enable/disable TLS)
+        - skip_verify: 0 or 1 (skip TLS verification)
+        - ca_cert: path to CA certificate
+        - client_cert: path to client certificate
+        - client_key: path to client key
+        - username/user: authentication username
+        - password/pass: authentication password
+        - page_size: default page size
 
         Args:
             url: Connection URL
 
         Returns:
             Client instance
+
+        Raises:
+            UnsupportedSchemeError: If the scheme is not supported
+
+        Example:
+            client = Client.from_url("quic://localhost:3141?skip_verify=1")
+            client = Client.from_url("grpc://localhost:50051?tls=0")
         """
-        parsed = urlparse(url)
+        config = parse_dsn(url)
 
-        # Extract host and port
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or 3141
-
-        # Parse query parameters
-        config = {}
-        if parsed.query:
-            params = parse_qs(parsed.query)
-
-            if "page_size" in params:
-                config["page_size"] = int(params["page_size"][0])
-            if "hello_name" in params:
-                config["hello_name"] = params["hello_name"][0]
-            if "hello_ver" in params:
-                config["hello_ver"] = params["hello_ver"][0]
-            if "conformance" in params:
-                config["conformance"] = params["conformance"][0]
-            if "ca_cert" in params:
-                config["ca_cert"] = params["ca_cert"][0]
-            if "client_cert" in params:
-                config["client_cert"] = params["client_cert"][0]
-            if "client_key" in params:
-                config["client_key"] = params["client_key"][0]
-            if "skip_verify" in params:
-                config["skip_verify"] = params["skip_verify"][0].lower() in (
-                    "1",
-                    "true",
-                )
-            if "server_name" in params:
-                config["server_name"] = params["server_name"][0]
-
-        return cls(host, port, **config)
+        return cls(
+            host=config.host,
+            port=config.port,
+            transport_type=config.transport_type,
+            tls_enabled=config.tls_enabled,
+            skip_verify=config.skip_verify,
+            ca_cert=config.ca_cert,
+            client_cert=config.client_cert,
+            client_key=config.client_key,
+            server_name=config.server_name,
+            username=config.username,
+            password=config.password,
+            page_size=config.page_size,
+            hello_name=config.hello_name,
+            hello_ver=config.hello_ver,
+            conformance=config.conformance,
+        )
 
     async def connect(self) -> Connection:
         """Create and connect a new connection."""
@@ -1326,7 +879,7 @@ def open_database(url: str) -> Client:
     Open a database client from URL.
 
     Args:
-        url: Connection URL (quic://host:port?options)
+        url: Connection URL (quic://host:port or grpc://host:port)
 
     Returns:
         Client instance

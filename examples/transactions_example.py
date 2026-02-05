@@ -9,6 +9,7 @@ Demonstrates:
 """
 
 import asyncio
+
 from geode_client import Client, ConnectionPool
 
 
@@ -28,12 +29,14 @@ async def basic_transaction_example():
             await conn.execute("CREATE (p:Person {name: 'Bob', age: 25})")
 
             # Query within transaction
-            page, _ = await conn.query("MATCH (p:Person) RETURN p.name AS name, p.age AS age")
+            page, _ = await conn.query(
+                "MATCH (p:Person) RETURN p.name AS name, p.age AS age"
+            )
 
             print("Created persons:")
             for row in page.rows:
-                name = row['name'].value
-                age = row['age'].value
+                name = row["name"].value
+                age = row["age"].value
                 print(f"  - {name}, age {age}")
 
             # Commit the transaction
@@ -62,7 +65,7 @@ async def savepoint_example():
         print("Created person: Charlie, age 35, city NYC")
 
         # Create a savepoint before making changes
-        sp1 = await conn.savepoint("before_update")
+        _sp1 = await conn.savepoint("before_update")
         print("Created savepoint: before_update")
 
         # Make some changes
@@ -112,7 +115,7 @@ async def nested_savepoints_example():
         print("Created organization: Acme Corp")
 
         # Level 1: Add departments
-        sp_depts = await conn.savepoint("departments")
+        _sp_depts = await conn.savepoint("departments")
         await conn.execute(
             "MATCH (org:Organization {name: 'Acme Corp'}) "
             "CREATE (org)-[:HAS_DEPT]->(d:Department {name: 'Engineering'})"
@@ -136,7 +139,7 @@ async def nested_savepoints_example():
         print("Added employees to Engineering: Alice, Bob")
 
         # Level 3: Add projects
-        sp_projects = await conn.savepoint("projects")
+        _sp_projects = await conn.savepoint("projects")
         await conn.execute(
             "MATCH (e:Employee {name: 'Alice'}) "
             "CREATE (e)-[:WORKS_ON]->(p:Project {name: 'Project X'})"
@@ -164,11 +167,7 @@ async def pool_with_transactions_example():
     print("=== Connection Pool with Transactions ===\n")
 
     pool = ConnectionPool(
-        host="127.0.0.1",
-        port=3141,
-        min_size=2,
-        max_size=10,
-        skip_verify=True
+        host="127.0.0.1", port=3141, min_size=2, max_size=10, skip_verify=True
     )
 
     async with pool:
@@ -251,6 +250,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Example failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 

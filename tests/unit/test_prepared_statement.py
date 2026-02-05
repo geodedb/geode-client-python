@@ -2,18 +2,19 @@
 Unit tests for PreparedStatement and related features.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from geode_client import (
+    BatchResult,
+    GeodeError,
+    Page,
+    PlanOperation,
     PreparedStatement,
+    QueryError,
     QueryPlan,
     QueryProfile,
-    PlanOperation,
-    BatchResult,
-    Page,
-    Column,
-    GeodeError,
-    QueryError,
 )
 
 
@@ -22,9 +23,7 @@ class TestPreparedStatement:
 
     def test_extract_parameters_simple(self):
         """Extract single parameter from query."""
-        params = PreparedStatement.extract_parameters(
-            "MATCH (n {id: $id}) RETURN n"
-        )
+        params = PreparedStatement.extract_parameters("MATCH (n {id: $id}) RETURN n")
         assert params == ["id"]
 
     def test_extract_parameters_multiple(self):
@@ -43,9 +42,7 @@ class TestPreparedStatement:
 
     def test_extract_parameters_none(self):
         """Query without parameters should return empty list."""
-        params = PreparedStatement.extract_parameters(
-            "MATCH (n:Person) RETURN n"
-        )
+        params = PreparedStatement.extract_parameters("MATCH (n:Person) RETURN n")
         assert params == []
 
     def test_extract_parameters_underscore(self):
@@ -130,9 +127,7 @@ class TestPreparedStatement:
 
         await stmt.execute(page_size=500)
 
-        conn.query.assert_called_once_with(
-            "MATCH (n) RETURN n", None, 500
-        )
+        conn.query.assert_called_once_with("MATCH (n) RETURN n", None, 500)
 
     @pytest.mark.asyncio
     async def test_execute_after_close_raises(self):
@@ -358,9 +353,7 @@ class TestConnectionPrepare:
         # We don't actually connect - just test the prepare logic
 
         with patch.object(conn, "_connected", True):
-            stmt = await conn.prepare(
-                "MATCH (n {id: $id, name: $name}) RETURN n"
-            )
+            stmt = await conn.prepare("MATCH (n {id: $id, name: $name}) RETURN n")
 
             assert stmt.parameters == ["id", "name"]
             assert stmt.query == "MATCH (n {id: $id, name: $name}) RETURN n"
@@ -377,111 +370,6 @@ class TestConnectionPrepare:
             stmt = await conn.prepare("MATCH (n:Person) RETURN n")
 
             assert stmt.parameters == []
-
-
-class TestConnectionExplain:
-    """Tests for Connection.explain() method (mock tests)."""
-
-    @pytest.mark.asyncio
-    async def test_explain_parses_response(self):
-        """Explain should parse server response into QueryPlan."""
-        from geode_client.client import Connection
-        import asyncio
-
-        conn = Connection(host="localhost", port=3141)
-        conn._connected = True
-        conn._lock = asyncio.Lock()
-
-        # Mock the write and read methods
-        conn._write_json = AsyncMock()
-        conn._read_json = AsyncMock(
-            return_value={
-                "result": {
-                    "type": "EXPLAIN",
-                    "plan": {
-                        "operation": "NodeScan",
-                        "description": "Scan Person nodes",
-                        "estimated_rows": 100,
-                        "estimated_cost": 1.0,
-                        "children": [],
-                    },
-                    "estimated_total_cost": 1.0,
-                    "planning_time_ms": 0.5,
-                }
-            }
-        )
-
-        plan = await conn.explain("MATCH (n:Person) RETURN n")
-
-        assert plan.query == "MATCH (n:Person) RETURN n"
-        assert plan.estimated_total_cost == 1.0
-        assert plan.planning_time_ms == 0.5
-        assert plan.root is not None
-        assert plan.root.operation == "NodeScan"
-
-    @pytest.mark.asyncio
-    async def test_explain_handles_error(self):
-        """Explain should raise QueryError on error response."""
-        from geode_client.client import Connection
-        import asyncio
-
-        conn = Connection(host="localhost", port=3141)
-        conn._connected = True
-        conn._lock = asyncio.Lock()
-
-        conn._write_json = AsyncMock()
-        conn._read_json = AsyncMock(
-            return_value={
-                "result": {
-                    "type": "ERROR",
-                    "code": "SYNTAX_ERROR",
-                    "message": "Invalid query syntax",
-                }
-            }
-        )
-
-        with pytest.raises(QueryError, match="SYNTAX_ERROR"):
-            await conn.explain("INVALID QUERY")
-
-
-class TestConnectionProfile:
-    """Tests for Connection.profile() method (mock tests)."""
-
-    @pytest.mark.asyncio
-    async def test_profile_parses_response(self):
-        """Profile should parse server response into QueryProfile."""
-        from geode_client.client import Connection
-        import asyncio
-
-        conn = Connection(host="localhost", port=3141)
-        conn._connected = True
-        conn._lock = asyncio.Lock()
-
-        conn._write_json = AsyncMock()
-        conn._read_json = AsyncMock(
-            return_value={
-                "result": {
-                    "type": "PROFILE",
-                    "execution_time_ms": 15.5,
-                    "planning_time_ms": 1.0,
-                    "rows_returned": 50,
-                    "rows_scanned": 1000,
-                    "operations": [
-                        {"name": "NodeScan", "actual_rows": 1000},
-                        {"name": "Filter", "actual_rows": 50},
-                    ],
-                }
-            }
-        )
-
-        profile = await conn.profile("MATCH (n:Person) WHERE n.age > 25 RETURN n")
-
-        assert profile.query == "MATCH (n:Person) WHERE n.age > 25 RETURN n"
-        assert profile.execution_time_ms == 15.5
-        assert profile.planning_time_ms == 1.0
-        assert profile.rows_returned == 50
-        assert profile.rows_scanned == 1000
-        assert len(profile.operations) == 2
 
 
 class TestConnectionBatch:

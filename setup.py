@@ -2,8 +2,9 @@
 Setup script for Geode Python client.
 """
 
-from setuptools import setup, find_packages
 from pathlib import Path
+
+from setuptools import find_packages, setup
 
 # Read README
 readme_path = Path(__file__).parent / "README.md"
@@ -13,14 +14,17 @@ if readme_path.exists():
 
 setup(
     name="geode-client",
-    version="0.1.0",
+    version="0.2.0",
     author="Geode Contributors",
     author_email="contact@example.com",
-    description="Python QUIC client library for Geode graph database",
+    description="Python QUIC/gRPC client library for Geode graph database",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://gitlab.com/devnw/codepros/geode/geode-client-python",
     packages=find_packages(),
+    package_data={
+        "geode_client": ["proto/*.py", "proto/*.pyi"],
+    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -35,33 +39,35 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        # QUIC support - upper bound prevents unexpected major version changes
-        "aioquic>=0.9.0,<2.0.0",
+        "aioquic>=0.9.0",  # QUIC transport
+        "protobuf>=4.21.0",  # Protobuf wire format
+        "grpcio>=1.50.0",  # gRPC transport
     ],
     extras_require={
         "dev": [
-            # Testing - upper bounds for supply chain security
-            "pytest>=7.0.0,<9.0.0",
-            "pytest-asyncio>=0.21.0,<1.0.0",
-            "pytest-cov>=4.0.0,<6.0.0",
-            "pytest-benchmark>=4.0.0,<5.0.0",
-            "hypothesis>=6.0.0,<7.0.0",
-            # Code quality - upper bounds
-            "black>=23.0.0,<25.0.0",
-            "mypy>=1.0.0,<2.0.0",
-            "ruff>=0.1.0,<1.0.0",
+            "pytest>=7.0.0",
+            "pytest-asyncio>=0.21.0",
+            "pytest-cov>=4.0.0",
+            "pytest-benchmark>=4.0.0",
+            "hypothesis>=6.0.0",
+            "black>=23.0.0",
+            "mypy>=1.0.0",
+            "ruff>=0.1.0",
+            "pre-commit>=3.0.0",
+            "commitizen>=3.0.0",
+            "grpcio-tools>=1.50.0",  # For protobuf code generation
         ],
         "integration": [
-            "pytest>=7.0.0,<9.0.0",
-            "pytest-asyncio>=0.21.0,<1.0.0",
+            "pytest>=7.0.0",
+            "pytest-asyncio>=0.21.0",
         ],
         "benchmark": [
-            "pytest>=7.0.0,<9.0.0",
-            "pytest-benchmark>=4.0.0,<5.0.0",
+            "pytest>=7.0.0",
+            "pytest-benchmark>=4.0.0",
         ],
         "property": [
-            "pytest>=7.0.0,<9.0.0",
-            "hypothesis>=6.0.0,<7.0.0",
+            "pytest>=7.0.0",
+            "hypothesis>=6.0.0",
         ],
     },
     entry_points={

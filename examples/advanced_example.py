@@ -9,14 +9,15 @@ Note: For authentication examples, set environment variables:
 
 import asyncio
 import os
+
 from geode_client import (
     ConnectionPool,
-    QueryBuilder,
+    EdgeDirection,
     PatternBuilder,
     PredicateBuilder,
-    EdgeDirection,
-    find_friends,
+    QueryBuilder,
     create_person,
+    find_friends,
 )
 
 
@@ -82,13 +83,7 @@ async def query_builder_examples():
         .build_and()
     )
 
-    query, _ = (
-        QueryBuilder()
-        .match("(p:Person)")
-        .where(predicate)
-        .return_("p")
-        .build()
-    )
+    query, _ = QueryBuilder().match("(p:Person)").where(predicate).return_("p").build()
 
     print("Query with Predicate Builder:")
     print(query)
@@ -121,7 +116,7 @@ async def connection_pool_example():
     )
 
     async with pool:
-        print(f"Pool initialized with min_size=2, max_size=10")
+        print("Pool initialized with min_size=2, max_size=10")
 
         # Execute queries concurrently using the pool
         async def execute_query(query_id: int):
@@ -133,9 +128,7 @@ async def connection_pool_example():
 
         # Run 5 queries concurrently
         print("\nExecuting 5 concurrent queries:")
-        results = await asyncio.gather(*[
-            execute_query(i) for i in range(1, 6)
-        ])
+        results = await asyncio.gather(*[execute_query(i) for i in range(1, 6)])
         print(f"All results: {results}")
 
 
@@ -143,7 +136,7 @@ async def auth_example():
     """Demonstrate authentication features."""
     print("\n=== Authentication Example ===\n")
 
-    from geode_client import open_database, AuthClient, RLSPolicy
+    from geode_client import AuthClient, RLSPolicy, open_database
 
     client = open_database("process:./zig-out/bin/geode")
 

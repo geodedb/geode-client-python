@@ -9,8 +9,9 @@ Tests cover:
 - Savepoints
 """
 
-import pytest
 import uuid
+
+import pytest
 
 
 def unique_id() -> str:
@@ -129,7 +130,9 @@ async def test_transaction_create_and_query(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Server may not properly rollback transactions - see UPGRADE_PLAN.md Appendix A.6")
+@pytest.mark.xfail(
+    reason="Server may not properly rollback transactions - see UPGRADE_PLAN.md Appendix A.6"
+)
 async def test_transaction_update_and_rollback(client):
     """Test that updates within a transaction are rolled back."""
     uid = unique_id()
@@ -158,7 +161,9 @@ async def test_transaction_update_and_rollback(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Server may not properly implement savepoint rollback - see UPGRADE_PLAN.md Appendix A.6")
+@pytest.mark.xfail(
+    reason="Server may not properly implement savepoint rollback - see UPGRADE_PLAN.md Appendix A.6"
+)
 async def test_savepoint_basic(client):
     """Test basic savepoint functionality."""
     uid = unique_id()
@@ -199,7 +204,9 @@ async def test_savepoint_basic(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Server may not properly implement savepoint rollback - see UPGRADE_PLAN.md Appendix A.6")
+@pytest.mark.xfail(
+    reason="Server may not properly implement savepoint rollback - see UPGRADE_PLAN.md Appendix A.6"
+)
 async def test_savepoint_multiple(client):
     """Test multiple savepoints in a transaction."""
     uid = unique_id()
@@ -208,7 +215,7 @@ async def test_savepoint_multiple(client):
 
         # Create node 1
         await conn.execute(f"CREATE (a:TxTest {{uid: '{uid}', idx: 1}})")
-        sp1 = await conn.savepoint("sp1")
+        _sp1 = await conn.savepoint("sp1")  # noqa: F841 - created for test structure
 
         # Create node 2
         await conn.execute(f"CREATE (b:TxTest {{uid: '{uid}', idx: 2}})")
@@ -261,7 +268,9 @@ async def test_transaction_with_relationship(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Server may not properly rollback transactions - see UPGRADE_PLAN.md Appendix A.6")
+@pytest.mark.xfail(
+    reason="Server may not properly rollback transactions - see UPGRADE_PLAN.md Appendix A.6"
+)
 async def test_transaction_delete_and_rollback(client):
     """Test that delete within transaction can be rolled back."""
     uid = unique_id()

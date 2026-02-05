@@ -1,17 +1,19 @@
 # Geode Python Client
 
-A modern, async Python client library for [Geode](https://gitlab.com/devnw/codepros/geode/geode) graph database with full GQL (ISO/IEC 39075:2024) support via QUIC+TLS.
+A modern, async Python client library for [Geode](https://gitlab.com/devnw/codepros/geode/geode) graph database with full GQL (ISO/IEC 39075:2024) support via QUIC+TLS or gRPC.
 
 ## Features
 
 - 🚀 **Fully async** with asyncio and type hints
 - 🔒 **QUIC + TLS 1.3** for secure, high-performance networking
+- 🌐 **gRPC transport** as an alternative to QUIC
 - 📝 **Full GQL support** (98.6% ISO compliance)
 - 🏗️ **Query builders** for programmatic query construction
 - 🔐 **Complete authentication** with RBAC and RLS support
 - 🏊 **Connection pooling** for concurrent workloads
 - 📊 **Rich type system** including Decimal, temporal types, and advanced types
 - 🎯 **Full type hints** for excellent IDE support
+- 📦 **Protobuf wire format** for efficient serialization
 
 ## Installation
 
@@ -27,8 +29,10 @@ pip install -e ".[dev]"
 ## Requirements
 
 - Python 3.9+
-- aioquic >= 0.9.0
-- Running Geode server with QUIC enabled
+- aioquic >= 0.9.0 (for QUIC transport)
+- protobuf >= 4.21.0 (wire format)
+- grpcio >= 1.50.0 (for gRPC transport)
+- Running Geode server with QUIC or gRPC enabled
 
 ## Quick Start
 
@@ -60,12 +64,28 @@ asyncio.run(main())
 from geode_client import open_database
 
 async def main():
-    # Open database with URL
-    client = open_database("quic://localhost:8443?skip_verify=true")
+    # Open database with QUIC transport (default)
+    client = open_database("quic://localhost:3141?skip_verify=true")
 
     async with client.connection() as conn:
         page, _ = await conn.query("MATCH (n) RETURN n LIMIT 10")
         print(f"Found {len(page.rows)} nodes")
+
+asyncio.run(main())
+```
+
+### Using gRPC Transport
+
+```python
+from geode_client import open_database
+
+async def main():
+    # Open database with gRPC transport
+    client = open_database("grpc://localhost:50051")
+
+    async with client.connection() as conn:
+        page, _ = await conn.query("RETURN 1 AS x")
+        print(f"Result: {page.rows[0]['x'].as_int}")
 
 asyncio.run(main())
 ```
@@ -298,10 +318,33 @@ range_val = row["period"].as_range
 
 ## Connection Options
 
-### URL Format
+### URL Formats (DSN)
+
+The client supports two transport schemes:
 
 ```
-quic://host:port?param=value&param2=value2
+quic://host:port?param=value&param2=value2   # QUIC transport (default port 3141)
+grpc://host:port?param=value&param2=value2   # gRPC transport (default port 50051)
+```
+
+**Examples:**
+
+```python
+# QUIC with default port (3141)
+client = Client.from_url("quic://localhost")
+
+# QUIC with explicit port and options
+client = Client.from_url("quic://geode.example.com:8443?skip_verify=true&page_size=500")
+
+# gRPC with default port (50051)
+client = Client.from_url("grpc://localhost")
+
+# gRPC with explicit port and TLS disabled (for local development)
+client = Client.from_url("grpc://localhost:50051?tls=0")
+
+# IPv6 support
+client = Client.from_url("quic://[::1]:3141")
+client = Client.from_url("grpc://[2001:db8::1]:50051")
 ```
 
 ### Configuration Reference
@@ -309,11 +352,13 @@ quic://host:port?param=value&param2=value2
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `host` | str | `"127.0.0.1"` | Server hostname or IP address |
-| `port` | int | `3141` | Server port number |
+| `port` | int | `3141` (QUIC), `50051` (gRPC) | Server port number |
+| `transport_type` | TransportType | `QUIC` | Transport protocol (`TransportType.QUIC` or `TransportType.GRPC`) |
 | `page_size` | int | `1000` | Results page size (1-100,000) |
 | `hello_name` | str | `"geode-python"` | Client identification name |
 | `hello_ver` | str | `"0.1.0"` | Client version string |
 | `conformance` | str | `"min"` | GQL conformance level (`"min"` or `"full"`) |
+| `tls_enabled` | bool | `True` | Enable TLS (can be disabled for gRPC in development) |
 | `ca_cert` | str | `None` | Path to CA certificate for server verification |
 | `client_cert` | str | `None` | Path to client certificate for mTLS |
 | `client_key` | str | `None` | Path to client private key for mTLS |
@@ -394,7 +439,7 @@ pip install -e ".[dev,integration,benchmark,property]"
 The test suite includes unit tests, integration tests, property-based tests, and benchmarks.
 
 ```bash
-# Run all unit tests (377 tests)
+# Run all unit tests (537 tests)
 pytest tests/unit/
 
 # Run with coverage report
@@ -403,8 +448,17 @@ pytest tests/unit/ --cov=geode_client --cov-report=term-missing
 # Run specific test module
 pytest tests/unit/test_types.py -v
 
-# Run integration tests (requires Docker, 119 tests)
+# Run integration tests (requires Docker or external server, 119 tests)
 pytest tests/integration/ -m integration
+
+# Run integration tests with QUIC transport (default)
+GEODE_TRANSPORT=quic pytest tests/integration/ -m integration
+
+# Run integration tests with gRPC transport
+GEODE_TRANSPORT=grpc pytest tests/integration/ -m integration
+
+# Connect to external server instead of Docker
+GEODE_HOST=192.168.1.100 GEODE_PORT=3141 pytest tests/integration/ -m integration
 
 # Run property-based tests (50 tests)
 pytest tests/property/ -v
@@ -420,7 +474,7 @@ pytest benchmarks/bench_types.py --benchmark-only --benchmark-min-rounds=3
 
 | Category | Location | Count | Description |
 |----------|----------|-------|-------------|
-| Unit | `tests/unit/` | 377 | Module-level tests with mocks |
+| Unit | `tests/unit/` | 537 | Module-level tests with mocks |
 | Integration | `tests/integration/` | 119 | End-to-end tests with Docker |
 | Property | `tests/property/` | 50 | Hypothesis-based fuzz testing |
 | Benchmark | `benchmarks/` | 154 | Performance measurements |
@@ -446,14 +500,14 @@ ruff check geode_client/ && ruff format --check geode_client/ && mypy geode_clie
 
 ## Performance
 
-The QUIC client provides excellent performance characteristics:
+Both QUIC and gRPC transports provide excellent performance characteristics:
 
 | Metric | Value | Notes |
 |--------|-------|-------|
 | Connection establishment | ~50-100ms | QUIC handshake + TLS |
 | Query latency | ~2-3ms | Localhost, simple queries |
 | Throughput | 1000+ q/s | With connection pooling |
-| Result parsing | ~1ms/1000 rows | JSON decoding |
+| Result parsing | ~0.5ms/1000 rows | Protobuf decoding |
 
 ### Performance Tips
 
@@ -467,6 +521,7 @@ The QUIC client provides excellent performance characteristics:
 For optimal QUIC throughput on high-bandwidth connections, configure UDP buffer sizes at the OS level.
 
 **Linux:**
+
 ```bash
 # Increase UDP buffer sizes to 7MB
 sudo sysctl -w net.core.rmem_max=7340032
@@ -478,6 +533,7 @@ echo "net.core.wmem_max=7340032" | sudo tee -a /etc/sysctl.d/99-geode-quic.conf
 ```
 
 **BSD/macOS:**
+
 ```bash
 sudo sysctl -w kern.ipc.maxsockbuf=8441037
 ```
@@ -502,10 +558,14 @@ async with ConnectionPool(min_size=5, max_size=20) as pool:
 
 ### Connection Refused
 
-Ensure Geode server is running with QUIC enabled:
+Ensure Geode server is running:
 
 ```bash
-./zig-out/bin/geode serve --listen 0.0.0.0:8443
+# QUIC transport (default port 3141)
+./zig-out/bin/geode serve --listen 0.0.0.0:3141
+
+# gRPC transport (default port 50051)
+./zig-out/bin/geode serve --grpc-listen 0.0.0.0:50051
 ```
 
 ### TLS Verification Errors
@@ -513,21 +573,34 @@ Ensure Geode server is running with QUIC enabled:
 For development, you can skip verification:
 
 ```python
-client = Client(host="localhost", port=8443, skip_verify=True)
+# QUIC with TLS verification skipped
+client = Client(host="localhost", port=3141, skip_verify=True)
+
+# gRPC with TLS disabled (for local development only)
+client = Client.from_url("grpc://localhost:50051?tls=0")
 ```
 
 For production, provide CA certificate:
 
 ```python
-client = Client(host="server", port=8443, ca_cert="/path/to/ca.crt")
+client = Client(host="server", port=3141, ca_cert="/path/to/ca.crt")
 ```
 
 ### Import Errors
 
-Ensure aioquic is installed:
+Ensure all dependencies are installed:
 
 ```bash
-pip install aioquic
+pip install aioquic protobuf grpcio
+```
+
+### gRPC Connection Issues
+
+If gRPC connections fail, check that the gRPC port is exposed and the server is listening:
+
+```python
+# Use insecure channel for local development
+client = Client.from_url("grpc://localhost:50051?tls=0")
 ```
 
 ## License
@@ -581,9 +654,11 @@ Contributions are welcome! Please follow these guidelines:
 3. Write tests first (TDD recommended)
 4. Implement your changes
 5. Run all quality checks:
+
    ```bash
    ruff check geode_client/ && mypy geode_client/ && pytest tests/unit/
    ```
+
 6. Update documentation if needed
 7. Submit a merge request
 
@@ -610,6 +685,7 @@ Contributions are welcome! Please follow these guidelines:
 | `PredicateBuilder` | Builder for WHERE clause predicates. |
 | `ConnectionPool` | Connection pool for concurrent workloads. |
 | `AuthClient` | Authentication and authorization operations. |
+| `TransportType` | Enum for transport selection (`QUIC`, `GRPC`). |
 
 ### Exceptions
 
@@ -620,6 +696,7 @@ Contributions are welcome! Please follow these guidelines:
 | `QueryError` | Query execution failures |
 | `AuthError` | Authentication/authorization failures |
 | `ValidationError` | Input validation failures |
+| `UnsupportedSchemeError` | Invalid DSN scheme (not `quic://` or `grpc://`) |
 
 For detailed developer documentation, see [CLAUDE.md](CLAUDE.md).
 

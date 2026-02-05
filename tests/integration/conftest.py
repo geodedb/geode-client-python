@@ -1,41 +1,44 @@
 """
 Pytest configuration and fixtures for integration tests.
 
-Supports two modes:
+Supports:
 1. External server: Set GEODE_HOST and GEODE_PORT environment variables
    to connect to an already-running Geode server (no Docker).
 2. Docker mode: If env vars are not set, starts a Docker container.
+3. Both QUIC and gRPC transports: Use GEODE_TRANSPORT=quic or GEODE_TRANSPORT=grpc
 """
 
+import atexit
 import os
-import time
-import pytest
-import asyncio
 import subprocess
-from typing import Generator, Optional
+import time
+from collections.abc import Generator
+from typing import Optional
+
+import pytest
 
 from geode_client import Client, ConnectionPool
-
+from geode_client.transport import TransportType
 
 # Test configuration
-# SEC-024: Pin Geode server image to specific version (not :latest)
-# Update this version when new Geode releases are published
-GEODE_VERSION = os.environ.get("GEODE_VERSION", "v0.1.0")
-GEODE_IMAGE = f"registry.gitlab.com/devnw/geode/geode:{GEODE_VERSION}"
-DEFAULT_GEODE_PORT = 3141
+GEODE_IMAGE = "registry.gitlab.com/devnw/geode/geode:latest"
+DEFAULT_QUIC_PORT = 3141
+DEFAULT_GRPC_PORT = 50051
 CONTAINER_STARTUP_TIMEOUT = 60  # seconds
 CONTAINER_NAME = "geode-python-test"
 
 # Check for external server configuration via environment variables
 _EXTERNAL_HOST = os.environ.get("GEODE_HOST")
 _EXTERNAL_PORT = os.environ.get("GEODE_PORT")
+_TRANSPORT = os.environ.get("GEODE_TRANSPORT", "quic").lower()
 
 
 def _find_available_port() -> int:
     """Find an available UDP port."""
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind(('', 0))
+        s.bind(("", 0))
         return s.getsockname()[1]
 
 
@@ -48,7 +51,7 @@ def _wait_for_server_ready(container_name: str, timeout: int = 60) -> bool:
                 ["docker", "logs", container_name],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             if "Server ready" in result.stdout or "Server ready" in result.stderr:
                 return True
@@ -67,9 +70,7 @@ def _cleanup_container(container_name: str) -> None:
     """Remove container if it exists."""
     try:
         subprocess.run(
-            ["docker", "rm", "-f", container_name],
-            capture_output=True,
-            timeout=10
+            ["docker", "rm", "-f", container_name], capture_output=True, timeout=10
         )
     except Exception:
         pass
@@ -83,10 +84,11 @@ class GeodeContainer:
     testcontainers, which has better support for TCP.
     """
 
-    def __init__(self, image: str = GEODE_IMAGE, port: int = DEFAULT_GEODE_PORT):
+    def __init__(self, image: str = GEODE_IMAGE, port: int = DEFAULT_QUIC_PORT):
         self.image = image
         self.container_port = port
         self.host_port: Optional[int] = None
+        self.grpc_port: Optional[int] = None
         self.container_name = f"{CONTAINER_NAME}-{os.getpid()}"
         self._started = False
 
@@ -98,24 +100,32 @@ class GeodeContainer:
         # Clean up any existing container with same name
         _cleanup_container(self.container_name)
 
-        # Find available port
+        # Find available ports
         self.host_port = _find_available_port()
+        self.grpc_port = _find_available_port()
 
         # Pull image if needed
-        subprocess.run(
-            ["docker", "pull", self.image],
-            capture_output=True,
-            timeout=300
-        )
+        subprocess.run(["docker", "pull", self.image], capture_output=True, timeout=300)
 
-        # Start container with UDP port mapping
-        # Note: Docker requires -p host:container/udp for UDP ports
+        # Start container with UDP port mapping for QUIC and TCP for gRPC
         cmd = [
-            "docker", "run", "-d",
-            "--name", self.container_name,
-            "-p", f"{self.host_port}:{self.container_port}/udp",
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            self.container_name,
+            "-p",
+            f"{self.host_port}:{self.container_port}/udp",
+            "-p",
+            f"{self.grpc_port}:50051/tcp",
             self.image,
-            "serve", "--listen", f"0.0.0.0:{self.container_port}", "--log-level", "info"
+            "serve",
+            "--listen",
+            f"0.0.0.0:{self.container_port}",
+            "--grpc-listen",
+            "0.0.0.0:50051",
+            "--log-level",
+            "info",
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -125,12 +135,12 @@ class GeodeContainer:
         # Wait for server to be ready
         if not _wait_for_server_ready(self.container_name, CONTAINER_STARTUP_TIMEOUT):
             logs = subprocess.run(
-                ["docker", "logs", self.container_name],
-                capture_output=True,
-                text=True
+                ["docker", "logs", self.container_name], capture_output=True, text=True
             )
             _cleanup_container(self.container_name)
-            raise RuntimeError(f"Container failed to start. Logs:\n{logs.stdout}\n{logs.stderr}")
+            raise RuntimeError(
+                f"Container failed to start. Logs:\n{logs.stdout}\n{logs.stderr}"
+            )
 
         self._started = True
         return self
@@ -145,11 +155,16 @@ class GeodeContainer:
         """Get the host address for connecting to the container."""
         return "127.0.0.1"
 
-    def get_port(self) -> int:
-        """Get the mapped host port."""
-        if self.host_port is None:
-            raise RuntimeError("Container not started")
-        return self.host_port
+    def get_port(self, transport: str = "quic") -> int:
+        """Get the mapped host port for the given transport."""
+        if transport == "grpc":
+            if self.grpc_port is None:
+                raise RuntimeError("Container not started")
+            return self.grpc_port
+        else:
+            if self.host_port is None:
+                raise RuntimeError("Container not started")
+            return self.host_port
 
     def __enter__(self) -> "GeodeContainer":
         return self.start()
@@ -165,6 +180,13 @@ _container: Optional[GeodeContainer] = None
 def _using_external_server() -> bool:
     """Check if we're configured to use an external server."""
     return _EXTERNAL_HOST is not None and _EXTERNAL_PORT is not None
+
+
+def _get_transport_type() -> TransportType:
+    """Get the configured transport type."""
+    if _TRANSPORT == "grpc":
+        return TransportType.GRPC
+    return TransportType.QUIC
 
 
 def _get_or_create_container() -> GeodeContainer:
@@ -204,14 +226,23 @@ def geode_host(geode_container: Optional[GeodeContainer]) -> str:
 
 @pytest.fixture(scope="session")
 def geode_port(geode_container: Optional[GeodeContainer]) -> int:
-    """Get the Geode server port."""
+    """Get the Geode server port for the configured transport."""
     if _using_external_server():
         return int(_EXTERNAL_PORT)
-    return geode_container.get_port()
+    transport = _get_transport_type()
+    if transport == TransportType.GRPC:
+        return geode_container.get_port("grpc")
+    return geode_container.get_port("quic")
+
+
+@pytest.fixture(scope="session")
+def transport_type() -> TransportType:
+    """Get the configured transport type."""
+    return _get_transport_type()
 
 
 @pytest.fixture
-def client(geode_host: str, geode_port: int) -> Client:
+def client(geode_host: str, geode_port: int, transport_type: TransportType) -> Client:
     """
     Create a Geode client configured for the test container.
 
@@ -220,7 +251,10 @@ def client(geode_host: str, geode_port: int) -> Client:
     return Client(
         host=geode_host,
         port=geode_port,
+        transport_type=transport_type,
         skip_verify=True,  # Test container uses self-signed certs
+        tls_enabled=transport_type
+        != TransportType.GRPC,  # Disable TLS for gRPC in tests
     )
 
 
@@ -236,7 +270,7 @@ async def connection(client: Client):
 
 
 @pytest.fixture
-async def pool(geode_host: str, geode_port: int):
+async def pool(geode_host: str, geode_port: int, transport_type: TransportType):
     """
     Provide a connection pool for tests.
 
@@ -248,14 +282,13 @@ async def pool(geode_host: str, geode_port: int):
         min_size=2,
         max_size=5,
         skip_verify=True,
+        transport_type=transport_type,
     )
     async with pool:
         yield pool
 
 
 # Cleanup on exit
-import atexit
-
 @atexit.register
 def _cleanup_on_exit():
     """Clean up container when Python exits (only if we started one)."""
@@ -270,7 +303,7 @@ def pytest_configure(config):
     """Register integration marker."""
     config.addinivalue_line(
         "markers",
-        "integration: mark test as integration test (requires Geode server or Docker)"
+        "integration: mark test as integration test (requires Geode server or Docker)",
     )
 
 

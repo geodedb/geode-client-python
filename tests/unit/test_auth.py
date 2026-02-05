@@ -1,21 +1,22 @@
 """Unit tests for the auth module."""
 
 import asyncio
-import pytest
 import warnings
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from geode_client.auth import (
+    _DEFAULT_ATTEMPT_WINDOW,
+    _DEFAULT_LOCKOUT_DURATION,
+    _DEFAULT_MAX_ATTEMPTS,
     AuthClient,
-    User,
-    Role,
     Permission,
     RLSPolicy,
+    Role,
     SessionInfo,
-    _DEFAULT_MAX_ATTEMPTS,
-    _DEFAULT_LOCKOUT_DURATION,
-    _DEFAULT_ATTEMPT_WINDOW,
+    User,
 )
 from geode_client.client import AuthError, SecurityWarning
 
@@ -178,16 +179,18 @@ class TestAuthClientLogin:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "token": "test_token",
-                "user_id": 1,
-                "username": "alice",
-                "expires_at": "2026-12-31T23:59:59Z",
-                "roles": ["admin"],
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "token": "test_token",
+                    "user_id": 1,
+                    "username": "alice",
+                    "expires_at": "2026-12-31T23:59:59Z",
+                    "roles": ["admin"],
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
         session = await client.login("alice", "password123")
@@ -204,10 +207,12 @@ class TestAuthClientLogin:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Invalid credentials",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Invalid credentials",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Login failed"):
@@ -219,16 +224,18 @@ class TestAuthClientLogin:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "token": "test_token",
-                "user_id": 1,
-                "username": "alice",
-                "expires_at": "invalid_date",
-                "roles": [],
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "token": "test_token",
+                    "user_id": 1,
+                    "username": "alice",
+                    "expires_at": "invalid_date",
+                    "roles": [],
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
         session = await client.login("alice", "password")
@@ -257,10 +264,12 @@ class TestAuthClientLogout:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Invalid token",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Invalid token",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Logout failed"):
@@ -276,18 +285,20 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "id": 1,
-                "username": "newuser",
-                "email": "newuser@example.com",
-                "is_active": True,
-                "created_at": "2026-01-01T00:00:00Z",
-                "roles": ["user"],
-                "metadata": {},
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "id": 1,
+                    "username": "newuser",
+                    "email": "newuser@example.com",
+                    "is_active": True,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "roles": ["user"],
+                    "metadata": {},
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
         user = await client.create_user(
@@ -307,10 +318,12 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Username already exists",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Username already exists",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Create user failed"):
@@ -334,10 +347,12 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "User not found",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "User not found",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Delete user failed"):
@@ -349,18 +364,20 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "id": 1,
-                "username": "alice",
-                "email": "newemail@example.com",
-                "is_active": False,
-                "created_at": "2026-01-01T00:00:00Z",
-                "roles": ["admin"],
-                "metadata": {"updated": "true"},
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "id": 1,
+                    "username": "alice",
+                    "email": "newemail@example.com",
+                    "is_active": False,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "roles": ["admin"],
+                    "metadata": {"updated": "true"},
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
         user = await client.update_user(
@@ -380,10 +397,12 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "User not found",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "User not found",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Update user failed"):
@@ -395,18 +414,20 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "id": 1,
-                "username": "alice",
-                "email": "alice@example.com",
-                "is_active": True,
-                "created_at": "2026-01-01T00:00:00Z",
-                "roles": ["user"],
-                "metadata": {},
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "id": 1,
+                    "username": "alice",
+                    "email": "alice@example.com",
+                    "is_active": True,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "roles": ["user"],
+                    "metadata": {},
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
         user = await client.get_user(1)
@@ -418,10 +439,12 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "User not found",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "User not found",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Get user failed"):
@@ -433,31 +456,33 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "users": [
-                    {
-                        "id": 1,
-                        "username": "alice",
-                        "email": "alice@example.com",
-                        "is_active": True,
-                        "created_at": "2026-01-01T00:00:00Z",
-                        "roles": [],
-                        "metadata": {},
-                    },
-                    {
-                        "id": 2,
-                        "username": "bob",
-                        "email": "bob@example.com",
-                        "is_active": True,
-                        "created_at": "2026-01-02T00:00:00Z",
-                        "roles": [],
-                        "metadata": {},
-                    },
-                ]
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "users": [
+                        {
+                            "id": 1,
+                            "username": "alice",
+                            "email": "alice@example.com",
+                            "is_active": True,
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "roles": [],
+                            "metadata": {},
+                        },
+                        {
+                            "id": 2,
+                            "username": "bob",
+                            "email": "bob@example.com",
+                            "is_active": True,
+                            "created_at": "2026-01-02T00:00:00Z",
+                            "roles": [],
+                            "metadata": {},
+                        },
+                    ]
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
         users = await client.list_users(limit=10, offset=0)
@@ -471,10 +496,12 @@ class TestAuthClientUserManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Permission denied",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Permission denied",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="List users failed"):
@@ -559,18 +586,20 @@ class TestAuthClientRoleManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "id": 1,
-                "name": "editor",
-                "description": "Editor role",
-                "permissions": ["read", "write"],
-                "parent_role": None,
-                "is_system": False,
-                "priority": 50,
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "id": 1,
+                    "name": "editor",
+                    "description": "Editor role",
+                    "permissions": ["read", "write"],
+                    "parent_role": None,
+                    "is_system": False,
+                    "priority": 50,
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
         role = await client.create_role(
@@ -590,18 +619,20 @@ class TestAuthClientRoleManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "id": 2,
-                "name": "superadmin",
-                "description": "Super admin",
-                "permissions": ["all"],
-                "parent_role": 1,
-                "is_system": False,
-                "priority": 100,
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "id": 2,
+                    "name": "superadmin",
+                    "description": "Super admin",
+                    "permissions": ["all"],
+                    "parent_role": 1,
+                    "is_system": False,
+                    "priority": 100,
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
         role = await client.create_role(
@@ -620,10 +651,12 @@ class TestAuthClientRoleManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Role already exists",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Role already exists",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Create role failed"):
@@ -647,10 +680,12 @@ class TestAuthClientRoleManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Cannot delete system role",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Cannot delete system role",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Delete role failed"):
@@ -693,10 +728,12 @@ class TestAuthClientPermissionManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Permission not found",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Permission not found",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Grant permission failed"):
@@ -720,10 +757,12 @@ class TestAuthClientPermissionManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Permission not assigned",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Permission not assigned",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Revoke permission failed"):
@@ -735,10 +774,12 @@ class TestAuthClientPermissionManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {"allowed": True},
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {"allowed": True},
+            }
+        )
 
         client = AuthClient(mock_conn)
         result = await client.check_permission(
@@ -754,10 +795,12 @@ class TestAuthClientPermissionManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {"allowed": False},
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {"allowed": False},
+            }
+        )
 
         client = AuthClient(mock_conn)
         result = await client.check_permission(
@@ -773,10 +816,12 @@ class TestAuthClientPermissionManagement:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "User not found",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "User not found",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Check permission failed"):
@@ -792,10 +837,12 @@ class TestAuthClientRLSPolicies:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {"id": 1},
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {"id": 1},
+            }
+        )
 
         client = AuthClient(mock_conn)
         policy = RLSPolicy(
@@ -820,10 +867,12 @@ class TestAuthClientRLSPolicies:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Invalid policy",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Invalid policy",
+            }
+        )
 
         client = AuthClient(mock_conn)
         policy = RLSPolicy(name="bad_policy", table="users", graph="", operation="")
@@ -862,10 +911,12 @@ class TestAuthClientRLSPolicies:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Policy not found",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Policy not found",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Enable policy failed"):
@@ -889,10 +940,12 @@ class TestAuthClientRLSPolicies:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Policy not found",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Policy not found",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError, match="Delete policy failed"):
@@ -1034,10 +1087,12 @@ class TestAuthClientRateLimiting:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Invalid credentials",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Invalid credentials",
+            }
+        )
 
         client = AuthClient(mock_conn)
         assert len(client._failed_attempts) == 0
@@ -1055,10 +1110,12 @@ class TestAuthClientRateLimiting:
         mock_conn._write_json = AsyncMock()
 
         # First fail a login
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Invalid credentials",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Invalid credentials",
+            }
+        )
 
         client = AuthClient(mock_conn)
         with pytest.raises(AuthError):
@@ -1067,16 +1124,18 @@ class TestAuthClientRateLimiting:
         assert len(client._failed_attempts) == 1
 
         # Now succeed
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "token": "test_token",
-                "user_id": 1,
-                "username": "user",
-                "expires_at": "2026-12-31T23:59:59Z",
-                "roles": [],
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "token": "test_token",
+                    "user_id": 1,
+                    "username": "user",
+                    "expires_at": "2026-12-31T23:59:59Z",
+                    "roles": [],
+                },
             }
-        })
+        )
 
         await client.login("user", "correctpass")
         assert len(client._failed_attempts) == 0
@@ -1088,10 +1147,12 @@ class TestAuthClientRateLimiting:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Invalid credentials",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Invalid credentials",
+            }
+        )
 
         client = AuthClient(mock_conn, max_attempts=3)
 
@@ -1110,10 +1171,12 @@ class TestAuthClientRateLimiting:
         mock_conn = MagicMock()
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "ERROR",
-            "message": "Invalid credentials",
-        })
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "ERROR",
+                "message": "Invalid credentials",
+            }
+        )
 
         # Use very short lockout for testing
         client = AuthClient(
@@ -1129,6 +1192,7 @@ class TestAuthClientRateLimiting:
 
         # Wait for lockout to expire
         import time
+
         time.sleep(0.01)  # 10ms > 1ms lockout
 
         # Should be able to attempt again (will fail but not due to rate limit)
@@ -1222,16 +1286,18 @@ class TestAuthClientTLSWarning:
         mock_conn.skip_verify = True
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "token": "test_token",
-                "user_id": 1,
-                "username": "alice",
-                "expires_at": "2026-12-31T23:59:59Z",
-                "roles": [],
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "token": "test_token",
+                    "user_id": 1,
+                    "username": "alice",
+                    "expires_at": "2026-12-31T23:59:59Z",
+                    "roles": [],
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
 
@@ -1251,16 +1317,18 @@ class TestAuthClientTLSWarning:
         mock_conn.skip_verify = False
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "token": "test_token",
-                "user_id": 1,
-                "username": "alice",
-                "expires_at": "2026-12-31T23:59:59Z",
-                "roles": [],
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "token": "test_token",
+                    "user_id": 1,
+                    "username": "alice",
+                    "expires_at": "2026-12-31T23:59:59Z",
+                    "roles": [],
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
 
@@ -1269,7 +1337,9 @@ class TestAuthClientTLSWarning:
             await client.login("alice", "password")
 
             # Filter for SecurityWarning only
-            security_warnings = [x for x in w if issubclass(x.category, SecurityWarning)]
+            security_warnings = [
+                x for x in w if issubclass(x.category, SecurityWarning)
+            ]
             assert len(security_warnings) == 0
 
     @pytest.mark.asyncio
@@ -1278,16 +1348,18 @@ class TestAuthClientTLSWarning:
         mock_conn = MagicMock(spec=[])  # No skip_verify attribute
         mock_conn._lock = asyncio.Lock()
         mock_conn._write_json = AsyncMock()
-        mock_conn._read_json = AsyncMock(return_value={
-            "status": "00000",
-            "result": {
-                "token": "test_token",
-                "user_id": 1,
-                "username": "alice",
-                "expires_at": "2026-12-31T23:59:59Z",
-                "roles": [],
+        mock_conn._read_json = AsyncMock(
+            return_value={
+                "status": "00000",
+                "result": {
+                    "token": "test_token",
+                    "user_id": 1,
+                    "username": "alice",
+                    "expires_at": "2026-12-31T23:59:59Z",
+                    "roles": [],
+                },
             }
-        })
+        )
 
         client = AuthClient(mock_conn)
 
@@ -1295,5 +1367,7 @@ class TestAuthClientTLSWarning:
             warnings.simplefilter("always")
             await client.login("alice", "password")
 
-            security_warnings = [x for x in w if issubclass(x.category, SecurityWarning)]
+            security_warnings = [
+                x for x in w if issubclass(x.category, SecurityWarning)
+            ]
             assert len(security_warnings) == 0

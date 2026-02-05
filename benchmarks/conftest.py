@@ -10,10 +10,7 @@ import pytest
 
 def pytest_configure(config):
     """Register benchmark markers."""
-    config.addinivalue_line(
-        "markers",
-        "benchmark: mark test as a benchmark"
-    )
+    config.addinivalue_line("markers", "benchmark: mark test as a benchmark")
 
 
 # Common test data for benchmarks

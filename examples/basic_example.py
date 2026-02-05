@@ -3,7 +3,8 @@ Basic example of using the Geode Python client.
 """
 
 import asyncio
-from geode_client import open_database, QueryBuilder
+
+from geode_client import QueryBuilder, open_database
 
 
 async def main():
@@ -16,7 +17,7 @@ async def main():
 
         # Simple query
         page, _ = await conn.query("RETURN 1 AS x, 'Hello' AS greeting")
-        print(f"\nSimple query results:")
+        print("\nSimple query results:")
         for row in page.rows:
             x = row["x"].as_int
             greeting = row["greeting"].as_string
@@ -26,7 +27,7 @@ async def main():
         query = "RETURN $name AS name, $age AS age"
         params = {"name": "Alice", "age": 30}
         page, _ = await conn.query(query, params)
-        print(f"\nParameterized query results:")
+        print("\nParameterized query results:")
         for row in page.rows:
             print(f"  name={row['name'].as_string}, age={row['age'].as_int}")
 
@@ -38,7 +39,7 @@ async def main():
             .with_param("name", "Bob")
             .build()
         )
-        print(f"\nQuery builder generated:")
+        print("\nQuery builder generated:")
         print(f"  Query: {query_text}")
         print(f"  Params: {params}")
 
