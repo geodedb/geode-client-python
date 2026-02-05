@@ -18,11 +18,16 @@ A modern, async Python client library for [Geode](https://gitlab.com/devnw/codep
 ## Installation
 
 ```bash
-# Install from source
-cd clients/python
-pip install .
+# Install from PyPI
+pip install geode-client
+```
 
-# Or install in editable mode for development
+For development:
+
+```bash
+# Clone and install in editable mode
+git clone https://gitlab.com/devnw/codepros/geode/geode-client-python.git
+cd geode-client-python
 pip install -e ".[dev]"
 ```
 
@@ -30,7 +35,7 @@ pip install -e ".[dev]"
 
 - Python 3.9+
 - aioquic >= 0.9.0 (for QUIC transport)
-- protobuf >= 4.21.0 (wire format)
+- protobuf >= 6.31.0 (wire format)
 - grpcio >= 1.50.0 (for gRPC transport)
 - Running Geode server with QUIC or gRPC enabled
 
@@ -65,7 +70,7 @@ from geode_client import open_database
 
 async def main():
     # Open database with QUIC transport (default)
-    client = open_database("quic://localhost:3141?skip_verify=true")
+    client = open_database("quic://localhost:3141?insecure_tls_skip_verify=true")
 
     async with client.connection() as conn:
         page, _ = await conn.query("MATCH (n) RETURN n LIMIT 10")
@@ -336,7 +341,7 @@ grpc://host:port?param=value&param2=value2   # gRPC transport (default port 5005
 client = Client.from_url("quic://localhost")
 
 # QUIC with explicit port and options
-client = Client.from_url("quic://geode.example.com:8443?skip_verify=true&page_size=500")
+client = Client.from_url("quic://geode.example.com:8443?insecure_tls_skip_verify=true&page_size=500")
 
 # gRPC with default port (50051)
 client = Client.from_url("grpc://localhost")
@@ -364,7 +369,7 @@ client = Client.from_url("grpc://[2001:db8::1]:50051")
 | `ca_cert` | str | `None` | Path to CA certificate for server verification |
 | `client_cert` | str | `None` | Path to client certificate for mTLS |
 | `client_key` | str | `None` | Path to client private key for mTLS |
-| `skip_verify` | bool | `False` | Skip TLS certificate verification (**insecure**) |
+| `insecure_tls_skip_verify` | bool | `False` | Skip TLS certificate verification (**insecure**) |
 | `server_name` | str | hostname | SNI server name for TLS |
 
 ### Pool Configuration
@@ -607,7 +612,7 @@ client = Client.from_url("grpc://localhost:50051?tls=0")
 
 ## License
 
-MIT License - see LICENSE file for details.
+Apache License 2.0 - see LICENSE file for details.
 
 ## Input Validation
 
