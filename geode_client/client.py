@@ -812,7 +812,6 @@ class Client:
         Supported URL formats:
         - quic://host:port?param=value (QUIC transport, default)
         - grpc://host:port?param=value (gRPC transport)
-        - grcp://host:port?param=value (deprecated alias for grpc://)
 
         Query parameters:
         - tls: 0 or 1 (enable/disable TLS)

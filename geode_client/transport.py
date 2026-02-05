@@ -10,7 +10,6 @@ import abc
 import asyncio
 import os
 import struct
-import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -95,8 +94,6 @@ def parse_dsn(dsn: str) -> TransportConfig:
     Supported formats:
     - quic://host:port?options (recommended)
     - grpc://host:port?options
-    - grcp://host:port?options (deprecated alias for grpc://)
-    - geode://host:port?options (deprecated, use quic://)
     - host:port?options (defaults to QUIC)
 
     Query parameters:
@@ -125,22 +122,6 @@ def parse_dsn(dsn: str) -> TransportConfig:
     """
     parsed = urlparse(dsn)
     scheme = (parsed.scheme or "").lower()
-
-    # Handle deprecated schemes
-    if scheme == "grcp":
-        warnings.warn(
-            "grcp:// scheme is deprecated, use grpc:// instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        scheme = "grpc"
-    elif scheme == "geode":
-        warnings.warn(
-            "geode:// scheme is deprecated, use quic:// instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        scheme = "quic"
 
     # Determine transport type
     if scheme == "quic" or scheme == "":
@@ -173,8 +154,8 @@ def parse_dsn(dsn: str) -> TransportConfig:
         if "tls" in params:
             config.tls_enabled = params["tls"][0].lower() in ("1", "true", "yes", "on")
 
-        # Insecure/skip_verify aliases
-        for key in ("insecure", "skip_verify", "insecure_skip_verify"):
+        # Insecure TLS skip verify aliases (primary: insecure_tls_skip_verify)
+        for key in ("insecure_tls_skip_verify", "insecure", "skip_verify"):
             if key in params:
                 config.skip_verify = params[key][0].lower() in (
                     "1",

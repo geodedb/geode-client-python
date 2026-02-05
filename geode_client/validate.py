@@ -248,7 +248,7 @@ def dsn_url(url: str) -> str:
     url = url.strip()
 
     # Check for basic URL structure
-    # Accept: quic://, geode://, or just host:port
+    # Accept: quic://, grpc://, or just host:port
     if "://" in url:
         # Has scheme
         scheme_match = re.match(r"^([a-zA-Z][a-zA-Z0-9+.-]*)://", url)
@@ -256,9 +256,9 @@ def dsn_url(url: str) -> str:
             raise ValidationError(f"Invalid URL scheme in '{url}'")
 
         scheme = scheme_match.group(1).lower()
-        if scheme not in ("quic", "geode", "geodes", "https"):
+        if scheme not in ("quic", "grpc", "grpcs", "https"):
             raise ValidationError(
-                f"Unsupported URL scheme '{scheme}': expected 'quic' or 'geode'"
+                f"Unsupported URL scheme '{scheme}': expected 'quic' or 'grpc'"
             )
     else:
         # No scheme - must be host:port or just host

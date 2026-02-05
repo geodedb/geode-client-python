@@ -1,7 +1,5 @@
 """Unit tests for transport module - DSN parsing and transport selection."""
 
-import warnings
-
 import pytest
 
 from geode_client.transport import (
@@ -60,19 +58,17 @@ class TestDsnParsing:
         assert config.transport_type == TransportType.GRPC
         assert config.port == 50051
 
-    def test_grcp_deprecated_alias(self):
-        """Test grcp:// as deprecated alias for grpc://."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            config = parse_dsn("grcp://localhost:50051")
+    def test_grcp_scheme_rejected(self):
+        """Test grcp:// scheme is rejected (no longer supported)."""
+        with pytest.raises(UnsupportedSchemeError) as exc_info:
+            parse_dsn("grcp://localhost:50051")
+        assert exc_info.value.scheme == "grcp"
 
-            # Should emit deprecation warning
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "grcp://" in str(w[0].message)
-
-            # Should parse as gRPC
-            assert config.transport_type == TransportType.GRPC
+    def test_geode_scheme_rejected(self):
+        """Test geode:// scheme is rejected (no longer supported)."""
+        with pytest.raises(UnsupportedSchemeError) as exc_info:
+            parse_dsn("geode://localhost:3141")
+        assert exc_info.value.scheme == "geode"
 
     def test_ipv6_address(self):
         """Test parsing IPv6 address."""
