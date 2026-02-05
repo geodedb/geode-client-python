@@ -254,10 +254,10 @@ class TestDsnUrlValidation:
         result = validate.dsn_url("quic://localhost:3141")
         assert result == "quic://localhost:3141"
 
-    def test_valid_geode_url(self):
-        """Valid geode:// URL should pass."""
-        result = validate.dsn_url("geode://example.com:3141")
-        assert result == "geode://example.com:3141"
+    def test_valid_grpc_url(self):
+        """Valid grpc:// URL should pass."""
+        result = validate.dsn_url("grpc://example.com:50051")
+        assert result == "grpc://example.com:50051"
 
     def test_url_with_params(self):
         """URL with query parameters should pass."""

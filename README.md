@@ -320,6 +320,8 @@ range_val = row["period"].as_range
 
 ### URL Formats (DSN)
 
+> **Note**: See [`geode/docs/DSN.md`](../geode/docs/DSN.md) for the complete DSN specification.
+
 The client supports two transport schemes:
 
 ```

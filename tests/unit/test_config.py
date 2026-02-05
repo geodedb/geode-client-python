@@ -130,6 +130,52 @@ class TestUrlQueryParameters:
         client = Client.from_url("quic://localhost?skip_verify=0")
         assert client.config["skip_verify"] is False
 
+    def test_insecure_tls_skip_verify_true(self):
+        """Test insecure_tls_skip_verify=true (primary parameter name)."""
+        client = Client.from_url("quic://localhost?insecure_tls_skip_verify=true")
+        assert client.config["skip_verify"] is True
+
+    def test_insecure_tls_skip_verify_1(self):
+        """Test insecure_tls_skip_verify=1."""
+        client = Client.from_url("quic://localhost?insecure_tls_skip_verify=1")
+        assert client.config["skip_verify"] is True
+
+    def test_insecure_tls_skip_verify_yes(self):
+        """Test insecure_tls_skip_verify=yes."""
+        client = Client.from_url("quic://localhost?insecure_tls_skip_verify=yes")
+        assert client.config["skip_verify"] is True
+
+    def test_insecure_tls_skip_verify_on(self):
+        """Test insecure_tls_skip_verify=on."""
+        client = Client.from_url("quic://localhost?insecure_tls_skip_verify=on")
+        assert client.config["skip_verify"] is True
+
+    def test_insecure_tls_skip_verify_false(self):
+        """Test insecure_tls_skip_verify=false."""
+        client = Client.from_url("quic://localhost?insecure_tls_skip_verify=false")
+        assert client.config["skip_verify"] is False
+
+    def test_insecure_alias_true(self):
+        """Test insecure=true alias."""
+        client = Client.from_url("quic://localhost?insecure=true")
+        assert client.config["skip_verify"] is True
+
+    def test_insecure_alias_1(self):
+        """Test insecure=1 alias."""
+        client = Client.from_url("quic://localhost?insecure=1")
+        assert client.config["skip_verify"] is True
+
+    def test_insecure_alias_false(self):
+        """Test insecure=false alias."""
+        client = Client.from_url("quic://localhost?insecure=false")
+        assert client.config["skip_verify"] is False
+
+    def test_insecure_with_grpc(self):
+        """Test insecure_tls_skip_verify with gRPC."""
+        client = Client.from_url("grpc://localhost:50051?insecure_tls_skip_verify=true")
+        assert client.config["skip_verify"] is True
+        assert client.transport_type == TransportType.GRPC
+
     def test_ca_cert(self):
         """Test ca_cert parameter."""
         client = Client.from_url("quic://localhost?ca_cert=/path/to/ca.crt")
