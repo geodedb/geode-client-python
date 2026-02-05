@@ -14,7 +14,7 @@ if readme_path.exists():
 
 setup(
     name="geode-client",
-    version="0.3.1",
+    version="0.3.2",
     author="CodePros",
     author_email="codepros@devnw.com",
     description="Python QUIC/gRPC client library for Geode graph database",
@@ -47,7 +47,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "aioquic>=0.9.0",  # QUIC transport
-        "protobuf>=4.21.0",  # Protobuf wire format
+        "protobuf>=6.31.0",  # Protobuf wire format (generated with 6.31.1)
         "grpcio>=1.50.0",  # gRPC transport
     ],
     extras_require={
