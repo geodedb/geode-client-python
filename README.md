@@ -354,7 +354,27 @@ client = Client.from_url("quic://[::1]:3141")
 client = Client.from_url("grpc://[2001:db8::1]:50051")
 ```
 
-### Configuration Reference
+### DSN Query Parameters
+
+These parameters can be used in DSN connection strings (see [DSN specification](../geode/docs/DSN.md)):
+
+| Parameter | Aliases | Type | Default | Description |
+|-----------|---------|------|---------|-------------|
+| `page_size` | - | int | 1000 | Results page size (1-100,000) |
+| `hello_name` | - | string | "geode-python" | Client identification name |
+| `hello_ver` | - | string | "0.1.0" | Client version string |
+| `conformance` | - | string | "min" | GQL conformance level ("min", "full") |
+| `tls` | - | boolean | true | Enable TLS (gRPC only, QUIC always uses TLS) |
+| `insecure_tls_skip_verify` | - | boolean | false | Skip TLS certificate verification (**insecure**) |
+| `ca` | `ca_cert` | string | - | Path to CA certificate file |
+| `cert` | `client_cert` | string | - | Path to client certificate file (for mTLS) |
+| `key` | `client_key` | string | - | Path to client private key file (for mTLS) |
+| `server_name` | - | string | hostname | SNI server name for TLS |
+| `connect_timeout` | `timeout` | int | 30 | Connection timeout in seconds |
+
+### Python API Parameters
+
+When using `Client()` constructor directly:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -362,14 +382,10 @@ client = Client.from_url("grpc://[2001:db8::1]:50051")
 | `port` | int | `3141` (QUIC), `50051` (gRPC) | Server port number |
 | `transport_type` | TransportType | `QUIC` | Transport protocol (`TransportType.QUIC` or `TransportType.GRPC`) |
 | `page_size` | int | `1000` | Results page size (1-100,000) |
-| `hello_name` | str | `"geode-python"` | Client identification name |
-| `hello_ver` | str | `"0.1.0"` | Client version string |
-| `conformance` | str | `"min"` | GQL conformance level (`"min"` or `"full"`) |
-| `tls_enabled` | bool | `True` | Enable TLS (can be disabled for gRPC in development) |
+| `skip_verify` | bool | `False` | Skip TLS certificate verification (**insecure**) |
 | `ca_cert` | str | `None` | Path to CA certificate for server verification |
 | `client_cert` | str | `None` | Path to client certificate for mTLS |
 | `client_key` | str | `None` | Path to client private key for mTLS |
-| `insecure_tls_skip_verify` | bool | `False` | Skip TLS certificate verification (**insecure**) |
 | `server_name` | str | hostname | SNI server name for TLS |
 
 ### Pool Configuration
