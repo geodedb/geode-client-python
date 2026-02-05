@@ -2,6 +2,21 @@
 Geode Python Client Library
 
 A Python client library for Geode graph database with full GQL support.
+Supports both QUIC and gRPC transports with protobuf wire protocol.
+
+Example:
+    # Using QUIC transport (default)
+    from geode_client import Client
+
+    client = Client(host="localhost", port=3141, skip_verify=True)
+    async with client.connection() as conn:
+        page, _ = await conn.query("RETURN 1 AS x")
+        print(page.rows[0]["x"].as_int)
+
+    # Using gRPC transport
+    client = Client.from_url("grpc://localhost:50051?tls=0")
+    async with client.connection() as conn:
+        page, _ = await conn.query("RETURN 1 AS x")
 """
 
 from . import validate
@@ -37,6 +52,18 @@ from .query_builder import (
     PredicateBuilder,
     QueryBuilder,
 )
+from .transport import (
+    GrpcTransport,
+    QuicTransport,
+    Transport,
+    TransportConfig,
+    TransportConnectionError,
+    TransportError,
+    TransportType,
+    UnsupportedSchemeError,
+    create_transport,
+    parse_dsn,
+)
 from .types import (
     Range,
     Value,
@@ -44,7 +71,7 @@ from .types import (
 )
 from .validate import ValidationError
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     # Client
     "Client",
@@ -63,6 +90,9 @@ __all__ = [
     "GeodeConnectionError",
     "QueryError",
     "AuthError",
+    "TransportError",
+    "TransportConnectionError",
+    "UnsupportedSchemeError",
     # Types
     "Value",
     "ValueKind",
@@ -84,4 +114,12 @@ __all__ = [
     # Validation
     "validate",
     "ValidationError",
+    # Transport
+    "Transport",
+    "TransportType",
+    "TransportConfig",
+    "QuicTransport",
+    "GrpcTransport",
+    "parse_dsn",
+    "create_transport",
 ]

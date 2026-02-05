@@ -14,14 +14,17 @@ if readme_path.exists():
 
 setup(
     name="geode-client",
-    version="0.1.0",
+    version="0.2.0",
     author="Geode Contributors",
     author_email="contact@example.com",
-    description="Python QUIC client library for Geode graph database",
+    description="Python QUIC/gRPC client library for Geode graph database",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://gitlab.com/devnw/codepros/geode/geode-client-python",
     packages=find_packages(),
+    package_data={
+        "geode_client": ["proto/*.py", "proto/*.pyi"],
+    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -36,7 +39,9 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        "aioquic>=0.9.0",  # QUIC support (required)
+        "aioquic>=0.9.0",  # QUIC transport
+        "protobuf>=4.21.0",  # Protobuf wire format
+        "grpcio>=1.50.0",  # gRPC transport
     ],
     extras_require={
         "dev": [
@@ -50,6 +55,7 @@ setup(
             "ruff>=0.1.0",
             "pre-commit>=3.0.0",
             "commitizen>=3.0.0",
+            "grpcio-tools>=1.50.0",  # For protobuf code generation
         ],
         "integration": [
             "pytest>=7.0.0",

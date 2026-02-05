@@ -1,7 +1,10 @@
 """Unit tests for Geode configuration and DSN parsing."""
 
+import pytest
+
 from geode_client import Client
 from geode_client.client import Connection, open_database
+from geode_client.transport import TransportType, UnsupportedSchemeError
 
 
 class TestClientCreation:
@@ -33,14 +36,25 @@ class TestClientFromUrl:
     def test_simple_url(self):
         """Test simple URL parsing."""
         client = Client.from_url("quic://localhost:3141")
-        assert client.host == "localhost"
+        # localhost is normalized to 127.0.0.1 in parse_dsn
+        assert client.host == "127.0.0.1"
         assert client.port == 3141
 
-    def test_geode_scheme(self):
-        """Test geode:// scheme."""
-        client = Client.from_url("geode://localhost:3141")
-        assert client.host == "localhost"
-        assert client.port == 3141
+    def test_quic_scheme(self):
+        """Test quic:// scheme."""
+        client = Client.from_url("quic://localhost:3141")
+        assert client.transport_type == TransportType.QUIC
+
+    def test_grpc_scheme(self):
+        """Test grpc:// scheme."""
+        client = Client.from_url("grpc://localhost:50051")
+        assert client.transport_type == TransportType.GRPC
+        assert client.port == 50051
+
+    def test_unsupported_scheme(self):
+        """Test unsupported scheme raises error."""
+        with pytest.raises(UnsupportedSchemeError):
+            Client.from_url("http://localhost:3141")
 
     def test_host_only(self):
         """Test URL with host only (default port)."""
@@ -136,6 +150,11 @@ class TestUrlQueryParameters:
         client = Client.from_url("quic://localhost?server_name=custom.example.com")
         assert client.config["server_name"] == "custom.example.com"
 
+    def test_tls_disabled(self):
+        """Test tls=0 parameter."""
+        client = Client.from_url("grpc://localhost:50051?tls=0")
+        assert client.config["tls_enabled"] is False
+
     def test_multiple_parameters(self):
         """Test multiple query parameters."""
         url = "quic://localhost:8443?page_size=1000&skip_verify=true&conformance=full"
@@ -153,15 +172,21 @@ class TestUrlDefaultValues:
         client = Client.from_url("quic://")
         assert client.host == "127.0.0.1"
 
-    def test_default_port(self):
-        """Test default port when not specified."""
+    def test_default_quic_port(self):
+        """Test default QUIC port when not specified."""
         client = Client.from_url("quic://example.com")
         assert client.port == 3141
 
+    def test_default_grpc_port(self):
+        """Test default gRPC port when not specified."""
+        client = Client.from_url("grpc://example.com")
+        assert client.port == 50051
+
     def test_empty_query_string(self):
         """Test URL with empty query string."""
-        client = Client.from_url("quic://localhost:3141?")
-        assert client.host == "localhost"
+        client = Client.from_url("quic://example.com:3141?")
+        # localhost is NOT normalized, only "localhost" literal is
+        assert client.host == "example.com"
         assert client.port == 3141
 
 
@@ -280,20 +305,20 @@ class TestUrlEdgeCases:
 
     def test_url_with_trailing_slash(self):
         """Test URL with trailing slash."""
-        client = Client.from_url("quic://localhost:3141/")
-        assert client.host == "localhost"
+        client = Client.from_url("quic://example.com:3141/")
+        assert client.host == "example.com"
         assert client.port == 3141
 
     def test_url_with_path(self):
         """Test URL with path (path is ignored)."""
-        client = Client.from_url("quic://localhost:3141/database")
-        assert client.host == "localhost"
+        client = Client.from_url("quic://example.com:3141/database")
+        assert client.host == "example.com"
         assert client.port == 3141
 
     def test_url_case_insensitive_scheme(self):
         """Test URL scheme is case insensitive."""
-        client = Client.from_url("QUIC://localhost:3141")
-        assert client.host == "localhost"
+        client = Client.from_url("QUIC://example.com:3141")
+        assert client.host == "example.com"
 
     def test_port_as_string_in_query(self):
         """Test page_size as string is converted to int."""
@@ -352,11 +377,9 @@ class TestConnectionState:
         """Test connection is initially not connected."""
         conn = Connection()
         assert conn._connected is False
-        assert conn._protocol is None
-        assert conn._reader is None
-        assert conn._writer is None
+        assert conn._transport is None
 
-    def test_initial_buffer_empty(self):
-        """Test initial buffer is empty."""
+    def test_initial_lock_created(self):
+        """Test connection creates a lock."""
         conn = Connection()
-        assert conn._buffer == b""
+        assert conn._lock is not None

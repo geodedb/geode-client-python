@@ -20,6 +20,10 @@ exclude = [
     "build",
     "dist",
     "*.egg-info",
+    # Generated protobuf code - do not lint
+    "geode_client/proto/geode_pb2.py",
+    "geode_client/proto/geode_pb2.pyi",
+    "geode_client/proto/geode_pb2_grpc.py",
 ]
 
 [lint]
