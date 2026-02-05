@@ -1,0 +1,21 @@
+[run]
+# Source directories
+source = geode_client
+
+# Exclude generated protobuf files from coverage
+omit =
+    geode_client/proto/geode_pb2.py
+    geode_client/proto/geode_pb2_grpc.py
+    geode_client/proto/*_pb2.py
+    geode_client/proto/*_pb2_grpc.py
+
+[report]
+# Exclude lines that can't be covered
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
