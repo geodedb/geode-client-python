@@ -261,10 +261,8 @@ python-publish-pypi:
     - python-test
     - python-coverage
   rules:
-    # Only on semantic version tags (e.g., v1.0.0, v1.2.3-beta.1)
+    # Automatically publish on semantic version tags (e.g., v1.0.0, v1.2.3-beta.1)
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/
-      when: manual
-      allow_failure: true
 
 # Publish to GitLab Package Registry (all version tags)
 python-publish-gitlab:
