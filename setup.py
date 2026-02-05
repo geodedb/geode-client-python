@@ -14,13 +14,20 @@ if readme_path.exists():
 
 setup(
     name="geode-client",
-    version="0.3.0",
-    author="Geode Contributors",
-    author_email="contact@example.com",
+    version="0.3.1",
+    author="CodePros",
+    author_email="codepros@devnw.com",
     description="Python QUIC/gRPC client library for Geode graph database",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://gitlab.com/devnw/codepros/geode/geode-client-python",
+    project_urls={
+        "Homepage": "https://gitlab.com/devnw/codepros/geode",
+        "Bug Tracker": "https://gitlab.com/devnw/codepros/geode/geode-client-python/-/issues",
+        "Repository": "https://gitlab.com/devnw/codepros/geode/geode-client-python",
+        "Documentation": "https://gitlab.com/devnw/codepros/geode/geode-client-python/-/blob/main/README.md",
+    },
+    license="Apache-2.0",
     packages=find_packages(),
     package_data={
         "geode_client": ["proto/*.py", "proto/*.pyi"],
@@ -29,7 +36,7 @@ setup(
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Topic :: Database",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
