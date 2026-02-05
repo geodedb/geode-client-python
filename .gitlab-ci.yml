@@ -72,6 +72,15 @@ include:
     inputs:
       stage: release
 
+  # PyPI Publishing (OIDC trusted publishing)
+  - component: gitlab.com/devnw/ci-catalog/python-publish@main
+    inputs:
+      stage: publish
+      python_version: "3.12"
+      repository: "pypi"
+      environment: "pypi"
+      needs: "python-install"
+
 default:
   tags:
     - company
@@ -88,6 +97,7 @@ stages:
   - benchmark
   - pages
   - release
+  - publish
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
@@ -231,3 +241,48 @@ pages:
     - python-coverage
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# PyPI Publishing
+# =============================================================================
+# Publishing to PyPI uses OIDC trusted publishing for secure, tokenless auth.
+# Configure trusted publisher at: https://pypi.org/manage/account/publishing/
+#
+# Required PyPI trusted publisher configuration:
+#   - Namespace: devnw/codepros/geode
+#   - Project: geode-client-python
+#   - Workflow: .gitlab-ci.yml
+#   - Environment: pypi
+
+# Publish to PyPI (production releases only)
+python-publish-pypi:
+  needs:
+    - python-install
+    - python-test
+    - python-coverage
+  rules:
+    # Only on semantic version tags (e.g., v1.0.0, v1.2.3-beta.1)
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/
+      when: manual
+      allow_failure: true
+
+# Publish to GitLab Package Registry (all version tags)
+python-publish-gitlab:
+  needs:
+    - python-install
+    - python-test
+  rules:
+    # On all version tags
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/
+
+# Token-based publishing (fallback if OIDC fails)
+python-publish-token:
+  needs:
+    - python-install
+    - python-test
+    - python-coverage
+  rules:
+    # Only when explicitly triggered and PYPI_TOKEN is set
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/ && $PYPI_TOKEN
+      when: manual
+      allow_failure: true
