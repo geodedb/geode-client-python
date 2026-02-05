@@ -14,7 +14,7 @@ if readme_path.exists():
 
 setup(
     name="geode-client",
-    version="0.2.0",
+    version="0.3.0",
     author="Geode Contributors",
     author_email="contact@example.com",
     description="Python QUIC/gRPC client library for Geode graph database",
