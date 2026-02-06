@@ -3,17 +3,28 @@ Generated protobuf code for Geode wire protocol.
 
 This package contains auto-generated code from proto/geode.proto.
 Do not edit directly - regenerate using:
+    ./scripts/generate_proto.sh
+Or:
     python -m grpc_tools.protoc -I proto --python_out=geode_client/proto \
         --pyi_out=geode_client/proto --grpc_python_out=geode_client/proto proto/geode.proto
 """
 
 from .geode_pb2 import (
+    BackupRequest,
+    BackupResponse,
     # Transactions
     BeginRequest,
     BeginResponse,
-    BoolValue,
     BytesKind,
     BytesValue,
+    CdcControlRequest,
+    CdcControlResponse,
+    CdcDiagnosticsConfig,
+    CdcDiagnosticsEngine,
+    CdcDiagnosticsRequest,
+    CdcDiagnosticsResponse,
+    CdcMalformedHash,
+    CdcMalformedSnapshot,
     # Transport wrappers
     ClientPacket,
     ColumnDefinition,
@@ -52,6 +63,8 @@ from .geode_pb2 import (
     PullResponse,
     QuicClientMessage,
     QuicServerMessage,
+    RestoreRequest,
+    RestoreResponse,
     RollbackRequest,
     RollbackResponse,
     RollbackToRequest,
@@ -64,12 +77,15 @@ from .geode_pb2 import (
     Status,
     StringKind,
     StringValue,
+    UploadBackupRequest,
+    UploadBackupResponse,
     # Values
     Value,
 )
 from .geode_pb2_grpc import (
     GeodeServiceServicer,
     GeodeServiceStub,
+    add_GeodeServiceServicer_to_server,
 )
 
 __all__ = [
@@ -101,7 +117,6 @@ __all__ = [
     "FloatKind",
     "StringValue",
     "StringKind",
-    "BoolValue",
     "DecimalValue",
     "BytesValue",
     "BytesKind",
@@ -131,7 +146,24 @@ __all__ = [
     "SavepointResponse",
     "RollbackToRequest",
     "RollbackToResponse",
+    # CDC
+    "CdcDiagnosticsRequest",
+    "CdcDiagnosticsResponse",
+    "CdcDiagnosticsConfig",
+    "CdcDiagnosticsEngine",
+    "CdcMalformedSnapshot",
+    "CdcMalformedHash",
+    "CdcControlRequest",
+    "CdcControlResponse",
+    # Backup / Restore
+    "BackupRequest",
+    "BackupResponse",
+    "RestoreRequest",
+    "RestoreResponse",
+    "UploadBackupRequest",
+    "UploadBackupResponse",
     # gRPC
     "GeodeServiceStub",
     "GeodeServiceServicer",
+    "add_GeodeServiceServicer_to_server",
 ]

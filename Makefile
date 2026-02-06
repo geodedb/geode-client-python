@@ -24,7 +24,7 @@ GEODE_PORT ?= 3141
 .PHONY: all build install install-dev clean test test-unit test-property test-integration \
         test-integration-docker bench lint fmt fmt-check typecheck doc coverage ci ci-quick \
         ci-full help venv docker-start docker-stop docker-logs example \
-        pre-commit pre-commit-install pre-commit-all pre-commit-update
+        pre-commit pre-commit-install pre-commit-all pre-commit-update proto
 
 # Default target - run everything (except integration tests which require server)
 all: install-dev fmt-check lint typecheck test-unit test-property bench-quick
@@ -51,6 +51,7 @@ help:
 	@echo "  make install           - Install package"
 	@echo "  make install-dev       - Install with dev dependencies"
 	@echo "  make clean             - Clean build artifacts and caches"
+	@echo "  make proto             - Regenerate protobuf code from canonical proto"
 	@echo "  make pre-commit-install - Install pre-commit hooks"
 	@echo ""
 	@echo "Test targets:"
@@ -142,6 +143,11 @@ clean:
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type f -name "*.pyo" -delete 2>/dev/null || true
 	@echo "✓ Clean complete"
+
+proto:
+	@echo "Generating protobuf code from canonical proto..."
+	./scripts/generate_proto.sh
+	@echo "✓ Proto generation complete"
 
 # =============================================================================
 # Test Targets

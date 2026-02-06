@@ -26,9 +26,7 @@ if _version_not_supported:
 
 
 class GeodeServiceStub(object):
-    """============================================================================
-    gRPC Service Definition
-    ============================================================================
+    """GeodeService provides gRPC access to the Geode database.
     """
 
     def __init__(self, channel):
@@ -39,78 +37,70 @@ class GeodeServiceStub(object):
         """
         self.Handshake = channel.unary_unary(
                 '/geode.GeodeService/Handshake',
-                request_serializer=geode__pb2.ClientPacket.SerializeToString,
-                response_deserializer=geode__pb2.ServerPacket.FromString,
+                request_serializer=geode__pb2.HelloRequest.SerializeToString,
+                response_deserializer=geode__pb2.HelloResponse.FromString,
                 _registered_method=True)
         self.Execute = channel.unary_stream(
                 '/geode.GeodeService/Execute',
-                request_serializer=geode__pb2.ClientPacket.SerializeToString,
-                response_deserializer=geode__pb2.ServerPacket.FromString,
-                _registered_method=True)
-        self.Pull = channel.unary_unary(
-                '/geode.GeodeService/Pull',
-                request_serializer=geode__pb2.ClientPacket.SerializeToString,
-                response_deserializer=geode__pb2.ServerPacket.FromString,
+                request_serializer=geode__pb2.ExecuteRequest.SerializeToString,
+                response_deserializer=geode__pb2.ExecutionResponse.FromString,
                 _registered_method=True)
         self.Ping = channel.unary_unary(
                 '/geode.GeodeService/Ping',
-                request_serializer=geode__pb2.ClientPacket.SerializeToString,
-                response_deserializer=geode__pb2.ServerPacket.FromString,
+                request_serializer=geode__pb2.PingRequest.SerializeToString,
+                response_deserializer=geode__pb2.PingResponse.FromString,
                 _registered_method=True)
         self.Begin = channel.unary_unary(
                 '/geode.GeodeService/Begin',
-                request_serializer=geode__pb2.ClientPacket.SerializeToString,
-                response_deserializer=geode__pb2.ServerPacket.FromString,
+                request_serializer=geode__pb2.BeginRequest.SerializeToString,
+                response_deserializer=geode__pb2.BeginResponse.FromString,
                 _registered_method=True)
         self.Commit = channel.unary_unary(
                 '/geode.GeodeService/Commit',
-                request_serializer=geode__pb2.ClientPacket.SerializeToString,
-                response_deserializer=geode__pb2.ServerPacket.FromString,
+                request_serializer=geode__pb2.CommitRequest.SerializeToString,
+                response_deserializer=geode__pb2.CommitResponse.FromString,
                 _registered_method=True)
         self.Rollback = channel.unary_unary(
                 '/geode.GeodeService/Rollback',
-                request_serializer=geode__pb2.ClientPacket.SerializeToString,
-                response_deserializer=geode__pb2.ServerPacket.FromString,
+                request_serializer=geode__pb2.RollbackRequest.SerializeToString,
+                response_deserializer=geode__pb2.RollbackResponse.FromString,
+                _registered_method=True)
+        self.GetCdcDiagnostics = channel.unary_unary(
+                '/geode.GeodeService/GetCdcDiagnostics',
+                request_serializer=geode__pb2.CdcDiagnosticsRequest.SerializeToString,
+                response_deserializer=geode__pb2.CdcDiagnosticsResponse.FromString,
+                _registered_method=True)
+        self.ControlCdc = channel.unary_unary(
+                '/geode.GeodeService/ControlCdc',
+                request_serializer=geode__pb2.CdcControlRequest.SerializeToString,
+                response_deserializer=geode__pb2.CdcControlResponse.FromString,
                 _registered_method=True)
 
 
 class GeodeServiceServicer(object):
-    """============================================================================
-    gRPC Service Definition
-    ============================================================================
+    """GeodeService provides gRPC access to the Geode database.
     """
 
     def Handshake(self, request, context):
-        """Handshake and Authentication
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Execute(self, request, context):
-        """Execute query (streaming responses)
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def Pull(self, request, context):
-        """Pull more results
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Ping(self, request, context):
-        """Utilities
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Begin(self, request, context):
-        """Transaction control
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -127,43 +117,60 @@ class GeodeServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetCdcDiagnostics(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ControlCdc(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_GeodeServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Handshake': grpc.unary_unary_rpc_method_handler(
                     servicer.Handshake,
-                    request_deserializer=geode__pb2.ClientPacket.FromString,
-                    response_serializer=geode__pb2.ServerPacket.SerializeToString,
+                    request_deserializer=geode__pb2.HelloRequest.FromString,
+                    response_serializer=geode__pb2.HelloResponse.SerializeToString,
             ),
             'Execute': grpc.unary_stream_rpc_method_handler(
                     servicer.Execute,
-                    request_deserializer=geode__pb2.ClientPacket.FromString,
-                    response_serializer=geode__pb2.ServerPacket.SerializeToString,
-            ),
-            'Pull': grpc.unary_unary_rpc_method_handler(
-                    servicer.Pull,
-                    request_deserializer=geode__pb2.ClientPacket.FromString,
-                    response_serializer=geode__pb2.ServerPacket.SerializeToString,
+                    request_deserializer=geode__pb2.ExecuteRequest.FromString,
+                    response_serializer=geode__pb2.ExecutionResponse.SerializeToString,
             ),
             'Ping': grpc.unary_unary_rpc_method_handler(
                     servicer.Ping,
-                    request_deserializer=geode__pb2.ClientPacket.FromString,
-                    response_serializer=geode__pb2.ServerPacket.SerializeToString,
+                    request_deserializer=geode__pb2.PingRequest.FromString,
+                    response_serializer=geode__pb2.PingResponse.SerializeToString,
             ),
             'Begin': grpc.unary_unary_rpc_method_handler(
                     servicer.Begin,
-                    request_deserializer=geode__pb2.ClientPacket.FromString,
-                    response_serializer=geode__pb2.ServerPacket.SerializeToString,
+                    request_deserializer=geode__pb2.BeginRequest.FromString,
+                    response_serializer=geode__pb2.BeginResponse.SerializeToString,
             ),
             'Commit': grpc.unary_unary_rpc_method_handler(
                     servicer.Commit,
-                    request_deserializer=geode__pb2.ClientPacket.FromString,
-                    response_serializer=geode__pb2.ServerPacket.SerializeToString,
+                    request_deserializer=geode__pb2.CommitRequest.FromString,
+                    response_serializer=geode__pb2.CommitResponse.SerializeToString,
             ),
             'Rollback': grpc.unary_unary_rpc_method_handler(
                     servicer.Rollback,
-                    request_deserializer=geode__pb2.ClientPacket.FromString,
-                    response_serializer=geode__pb2.ServerPacket.SerializeToString,
+                    request_deserializer=geode__pb2.RollbackRequest.FromString,
+                    response_serializer=geode__pb2.RollbackResponse.SerializeToString,
+            ),
+            'GetCdcDiagnostics': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCdcDiagnostics,
+                    request_deserializer=geode__pb2.CdcDiagnosticsRequest.FromString,
+                    response_serializer=geode__pb2.CdcDiagnosticsResponse.SerializeToString,
+            ),
+            'ControlCdc': grpc.unary_unary_rpc_method_handler(
+                    servicer.ControlCdc,
+                    request_deserializer=geode__pb2.CdcControlRequest.FromString,
+                    response_serializer=geode__pb2.CdcControlResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -174,9 +181,7 @@ def add_GeodeServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class GeodeService(object):
-    """============================================================================
-    gRPC Service Definition
-    ============================================================================
+    """GeodeService provides gRPC access to the Geode database.
     """
 
     @staticmethod
@@ -194,8 +199,8 @@ class GeodeService(object):
             request,
             target,
             '/geode.GeodeService/Handshake',
-            geode__pb2.ClientPacket.SerializeToString,
-            geode__pb2.ServerPacket.FromString,
+            geode__pb2.HelloRequest.SerializeToString,
+            geode__pb2.HelloResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -221,35 +226,8 @@ class GeodeService(object):
             request,
             target,
             '/geode.GeodeService/Execute',
-            geode__pb2.ClientPacket.SerializeToString,
-            geode__pb2.ServerPacket.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def Pull(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/geode.GeodeService/Pull',
-            geode__pb2.ClientPacket.SerializeToString,
-            geode__pb2.ServerPacket.FromString,
+            geode__pb2.ExecuteRequest.SerializeToString,
+            geode__pb2.ExecutionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -275,8 +253,8 @@ class GeodeService(object):
             request,
             target,
             '/geode.GeodeService/Ping',
-            geode__pb2.ClientPacket.SerializeToString,
-            geode__pb2.ServerPacket.FromString,
+            geode__pb2.PingRequest.SerializeToString,
+            geode__pb2.PingResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -302,8 +280,8 @@ class GeodeService(object):
             request,
             target,
             '/geode.GeodeService/Begin',
-            geode__pb2.ClientPacket.SerializeToString,
-            geode__pb2.ServerPacket.FromString,
+            geode__pb2.BeginRequest.SerializeToString,
+            geode__pb2.BeginResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -329,8 +307,8 @@ class GeodeService(object):
             request,
             target,
             '/geode.GeodeService/Commit',
-            geode__pb2.ClientPacket.SerializeToString,
-            geode__pb2.ServerPacket.FromString,
+            geode__pb2.CommitRequest.SerializeToString,
+            geode__pb2.CommitResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -356,8 +334,62 @@ class GeodeService(object):
             request,
             target,
             '/geode.GeodeService/Rollback',
-            geode__pb2.ClientPacket.SerializeToString,
-            geode__pb2.ServerPacket.FromString,
+            geode__pb2.RollbackRequest.SerializeToString,
+            geode__pb2.RollbackResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCdcDiagnostics(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/geode.GeodeService/GetCdcDiagnostics',
+            geode__pb2.CdcDiagnosticsRequest.SerializeToString,
+            geode__pb2.CdcDiagnosticsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ControlCdc(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/geode.GeodeService/ControlCdc',
+            geode__pb2.CdcControlRequest.SerializeToString,
+            geode__pb2.CdcControlResponse.FromString,
             options,
             channel_credentials,
             insecure,

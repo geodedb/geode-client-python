@@ -209,7 +209,6 @@ class TestProtobufRoundtrip:
     def test_value_types_roundtrip(self):
         """Test all Value types roundtrip."""
         from geode_client.proto import (
-            BoolValue,
             DoubleValue,
             IntKind,
             IntValue,
@@ -242,13 +241,13 @@ class TestProtobufRoundtrip:
         assert restored.HasField("double_val")
         assert abs(restored.double_val.value - 3.14) < 0.001
 
-        # Test bool
-        bool_val = Value(bool_val=BoolValue(value=True))
+        # Test bool (bool_val is a plain bool in the canonical proto oneof)
+        bool_val = Value(bool_val=True)
         data = bool_val.SerializeToString()
         restored = Value()
         restored.ParseFromString(data)
         assert restored.HasField("bool_val")
-        assert restored.bool_val.value is True
+        assert restored.bool_val is True
 
         # Test string
         str_val = Value(string_val=StringValue(value="hello", kind=StringKind.STRING))
@@ -336,10 +335,12 @@ class TestGrpcServiceStub:
         from geode_client.proto.geode_pb2_grpc import GeodeServiceServicer
 
         # Check that servicer has the expected methods (for server implementation)
+        # Note: Pull is QUIC-only; the canonical gRPC service uses Execute streaming
         assert hasattr(GeodeServiceServicer, "Handshake")
         assert hasattr(GeodeServiceServicer, "Execute")
-        assert hasattr(GeodeServiceServicer, "Pull")
         assert hasattr(GeodeServiceServicer, "Ping")
         assert hasattr(GeodeServiceServicer, "Begin")
         assert hasattr(GeodeServiceServicer, "Commit")
         assert hasattr(GeodeServiceServicer, "Rollback")
+        assert hasattr(GeodeServiceServicer, "GetCdcDiagnostics")
+        assert hasattr(GeodeServiceServicer, "ControlCdc")

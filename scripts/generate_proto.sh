@@ -1,12 +1,13 @@
 #!/bin/bash
-# Generate Python protobuf code from proto/geode.proto
+# Generate Python protobuf code from the canonical geode.proto
 #
 # Usage: ./scripts/generate_proto.sh
 #
 # Prerequisites:
 #   pip install grpcio-tools
 #
-# Or run ./scripts/install-protoc.sh first
+# This script copies the canonical proto from the server source and generates
+# Python protobuf + gRPC stubs.
 
 set -e
 
@@ -14,9 +15,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PROTO_DIR="$PROJECT_DIR/proto"
 OUTPUT_DIR="$PROJECT_DIR/geode_client/proto"
+CANONICAL_PROTO="$PROJECT_DIR/../geode/src/proto/geode.proto"
 
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
+mkdir -p "$PROTO_DIR"
+
+# Copy canonical proto if available
+if [ -f "$CANONICAL_PROTO" ]; then
+    echo "Copying canonical proto from $CANONICAL_PROTO"
+    cp "$CANONICAL_PROTO" "$PROTO_DIR/geode.proto"
+else
+    echo "Warning: Canonical proto not found at $CANONICAL_PROTO"
+    echo "Using existing proto at $PROTO_DIR/geode.proto"
+fi
+
+if [ ! -f "$PROTO_DIR/geode.proto" ]; then
+    echo "Error: No proto file found at $PROTO_DIR/geode.proto"
+    exit 1
+fi
 
 echo "Generating Python protobuf code..."
 echo "  Proto file: $PROTO_DIR/geode.proto"

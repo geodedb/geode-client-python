@@ -17,7 +17,6 @@ from urllib.parse import parse_qs, urlparse
 
 from .proto import (
     BeginRequest,
-    ClientPacket,
     CommitRequest,
     ExecuteRequest,
     HelloRequest,
@@ -27,7 +26,6 @@ from .proto import (
     QuicClientMessage,
     QuicServerMessage,
     RollbackRequest,
-    ServerPacket,
 )
 
 
@@ -602,31 +600,13 @@ class GrpcTransport(Transport):
         self._channel = None
         self._stub = None
 
-    def _wrap_request(self, msg: QuicClientMessage) -> ClientPacket:
-        """Wrap a QUIC message in a ClientPacket for gRPC."""
-        return ClientPacket(quic=msg)
-
-    def _unwrap_response(self, packet: ServerPacket) -> QuicServerMessage:
-        """Unwrap a ServerPacket to get the QUIC message."""
-        if packet.HasField("quic"):
-            return packet.quic
-        raise TransportError("Invalid server response: missing quic field")
-
     async def hello(self, request: HelloRequest) -> HelloResponse:
         """Send HELLO handshake via gRPC."""
-        msg = QuicClientMessage(hello=request)
-        packet = self._wrap_request(msg)
-
         try:
-            response = await self._stub.Handshake(packet)
-            quic_msg = self._unwrap_response(response)
-
-            if quic_msg.HasField("hello"):
-                if quic_msg.hello.success:
-                    self._session_id = quic_msg.hello.session_id
-                return quic_msg.hello
-            else:
-                raise TransportError("Expected HELLO response")
+            response = await self._stub.Handshake(request)
+            if response.success:
+                self._session_id = response.session_id
+            return response
         except Exception as e:
             if "grpc" in type(e).__module__:
                 raise TransportConnectionError(
@@ -635,17 +615,19 @@ class GrpcTransport(Transport):
             raise
 
     async def execute(self, request: ExecuteRequest) -> QuicServerMessage:
-        """Execute a query via gRPC streaming."""
-        msg = QuicClientMessage(execute=request)
-        packet = self._wrap_request(msg)
+        """Execute a query via gRPC streaming.
 
+        Returns a QuicServerMessage wrapping the ExecutionResponse for
+        compatibility with the QUIC transport interface.
+        """
         try:
             # Execute returns a stream - get first response
-            stream = self._stub.Execute(packet)
+            stream = self._stub.Execute(request)
             response = await stream.read()
             if response is None:
                 raise TransportError("No response from server")
-            return self._unwrap_response(response)
+            # Wrap typed response into QuicServerMessage for caller compatibility
+            return QuicServerMessage(execute=response)
         except Exception as e:
             if "grpc" in type(e).__module__:
                 raise TransportConnectionError(
@@ -654,40 +636,33 @@ class GrpcTransport(Transport):
             raise
 
     async def pull(self, request: PullRequest) -> QuicServerMessage:
-        """Pull more results via gRPC."""
-        msg = QuicClientMessage(pull=request)
-        packet = self._wrap_request(msg)
+        """Pull more results via gRPC.
 
-        try:
-            response = await self._stub.Pull(packet)
-            return self._unwrap_response(response)
-        except Exception as e:
-            if "grpc" in type(e).__module__:
-                raise TransportConnectionError(
-                    str(e), "grpc", self.config.host, self.config.port
-                )
-            raise
+        Note: The canonical gRPC service does not define a Pull RPC.
+        Pull is a QUIC-only concept. For gRPC, additional results come
+        from the Execute stream. This method raises NotImplementedError.
+        """
+        raise NotImplementedError(
+            "Pull is not available via gRPC. Use the Execute stream instead."
+        )
 
     async def ping(self) -> bool:
         """Ping the server via gRPC."""
-        msg = QuicClientMessage(ping=PingRequest())
-        packet = self._wrap_request(msg)
-
         try:
-            response = await self._stub.Ping(packet)
-            quic_msg = self._unwrap_response(response)
-            return quic_msg.HasField("ping") and quic_msg.ping.ok
+            response = await self._stub.Ping(PingRequest())
+            return response.ok
         except Exception:
             return False
 
     async def begin(self, request: BeginRequest) -> QuicServerMessage:
-        """Begin a transaction via gRPC."""
-        msg = QuicClientMessage(begin=request)
-        packet = self._wrap_request(msg)
+        """Begin a transaction via gRPC.
 
+        Returns a QuicServerMessage wrapping the BeginResponse for
+        compatibility with the QUIC transport interface.
+        """
         try:
-            response = await self._stub.Begin(packet)
-            return self._unwrap_response(response)
+            response = await self._stub.Begin(request)
+            return QuicServerMessage(begin=response)
         except Exception as e:
             if "grpc" in type(e).__module__:
                 raise TransportConnectionError(
@@ -696,13 +671,14 @@ class GrpcTransport(Transport):
             raise
 
     async def commit(self, request: CommitRequest) -> QuicServerMessage:
-        """Commit a transaction via gRPC."""
-        msg = QuicClientMessage(commit=request)
-        packet = self._wrap_request(msg)
+        """Commit a transaction via gRPC.
 
+        Returns a QuicServerMessage wrapping the CommitResponse for
+        compatibility with the QUIC transport interface.
+        """
         try:
-            response = await self._stub.Commit(packet)
-            return self._unwrap_response(response)
+            response = await self._stub.Commit(request)
+            return QuicServerMessage(commit=response)
         except Exception as e:
             if "grpc" in type(e).__module__:
                 raise TransportConnectionError(
@@ -711,13 +687,14 @@ class GrpcTransport(Transport):
             raise
 
     async def rollback(self, request: RollbackRequest) -> QuicServerMessage:
-        """Rollback a transaction via gRPC."""
-        msg = QuicClientMessage(rollback=request)
-        packet = self._wrap_request(msg)
+        """Rollback a transaction via gRPC.
 
+        Returns a QuicServerMessage wrapping the RollbackResponse for
+        compatibility with the QUIC transport interface.
+        """
         try:
-            response = await self._stub.Rollback(packet)
-            return self._unwrap_response(response)
+            response = await self._stub.Rollback(request)
+            return QuicServerMessage(rollback=response)
         except Exception as e:
             if "grpc" in type(e).__module__:
                 raise TransportConnectionError(

@@ -309,12 +309,6 @@ class StringValue(_message.Message):
     kind: StringKind
     def __init__(self, value: _Optional[str] = ..., kind: _Optional[_Union[StringKind, str]] = ...) -> None: ...
 
-class BoolValue(_message.Message):
-    __slots__ = ("value",)
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    value: bool
-    def __init__(self, value: bool = ...) -> None: ...
-
 class DecimalValue(_message.Message):
     __slots__ = ("coeff", "scale", "orig_scale", "orig_repr")
     COEFF_FIELD_NUMBER: _ClassVar[int]

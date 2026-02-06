@@ -1,26 +1,18 @@
 syntax = "proto3";
 package geode;
 
-// ============================================================================
-// gRPC Service Definition
-// ============================================================================
+option go_package = "geodedb.com/geode/proto";
+
+// GeodeService provides gRPC access to the Geode database.
 service GeodeService {
-  // Handshake and Authentication
-  rpc Handshake(ClientPacket) returns (ServerPacket);
-
-  // Execute query (streaming responses)
-  rpc Execute(ClientPacket) returns (stream ServerPacket);
-
-  // Pull more results
-  rpc Pull(ClientPacket) returns (ServerPacket);
-
-  // Utilities
-  rpc Ping(ClientPacket) returns (ServerPacket);
-
-  // Transaction control
-  rpc Begin(ClientPacket) returns (ServerPacket);
-  rpc Commit(ClientPacket) returns (ServerPacket);
-  rpc Rollback(ClientPacket) returns (ServerPacket);
+  rpc Handshake(HelloRequest) returns (HelloResponse);
+  rpc Execute(ExecuteRequest) returns (stream ExecutionResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Begin(BeginRequest) returns (BeginResponse);
+  rpc Commit(CommitRequest) returns (CommitResponse);
+  rpc Rollback(RollbackRequest) returns (RollbackResponse);
+  rpc GetCdcDiagnostics(CdcDiagnosticsRequest) returns (CdcDiagnosticsResponse);
+  rpc ControlCdc(CdcControlRequest) returns (CdcControlResponse);
 }
 
 // ============================================================================
@@ -115,7 +107,7 @@ message Param {
 message PullRequest {
   uint64 request_id = 1;
   uint32 page_size = 2;
-  string session_id = 3;
+  string session_id = 3; // Required for gRPC; ignored for QUIC
 }
 
 message PullResponse {
@@ -126,7 +118,7 @@ message PullResponse {
 // Execution Responses
 // ============================================================================
 message Status {
-  string status_class = 1;
+  string status_class = 1; // e.g., "00000"
   string status_subclass = 2;
   repeated string additional_statuses = 3;
   repeated string flagger_findings = 4;
@@ -224,12 +216,8 @@ message StringValue {
   StringKind kind = 2;
 }
 
-message BoolValue {
-  bool value = 1;
-}
-
 message DecimalValue {
-  string coeff = 1;
+  string coeff = 1; // i128 as decimal string
   uint32 scale = 2;
   uint32 orig_scale = 3;
   string orig_repr = 4;
@@ -292,7 +280,7 @@ message ExtendedValue {
 message Error {
   string code = 1;
   string message = 2;
-  string type = 3;
+  string type = 3; // "ERROR"
   string anchor = 4;
 }
 
@@ -455,34 +443,34 @@ message PingResponse {
 // ============================================================================
 message BeginRequest {
   bool read_only = 1;
-  string session_id = 2;
+  string session_id = 2; // Required for gRPC; ignored for QUIC
 }
 message BeginResponse {
   string session_id = 1;
   string tx_id = 2;
 }
 message CommitRequest {
-  string session_id = 1;
+  string session_id = 1; // Required for gRPC; ignored for QUIC
 }
 message CommitResponse {
   bool success = 1;
 }
 message RollbackRequest {
-  string session_id = 1;
+  string session_id = 1; // Required for gRPC; ignored for QUIC
 }
 message RollbackResponse {
   bool success = 1;
 }
 message SavepointRequest {
   string name = 1;
-  string session_id = 2;
+  string session_id = 2; // Required for gRPC; ignored for QUIC
 }
 message SavepointResponse {
   bool success = 1;
 }
 message RollbackToRequest {
   string name = 1;
-  string session_id = 2;
+  string session_id = 2; // Required for gRPC; ignored for QUIC
 }
 message RollbackToResponse {
   bool success = 1;
@@ -555,7 +543,7 @@ message CdcControlResponse {
 // Backup / Restore
 // ============================================================================
 message BackupRequest {
-  string backup_type = 1;
+  string backup_type = 1; // "full"
   bool compress = 3;
 }
 message BackupResponse {
