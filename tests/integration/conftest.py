@@ -21,7 +21,7 @@ from geode_client import Client, ConnectionPool
 from geode_client.transport import TransportType
 
 # Test configuration
-GEODE_IMAGE = "registry.gitlab.com/devnw/geode/geode:latest"
+GEODE_IMAGE = "geodedb/geode:latest"
 DEFAULT_QUIC_PORT = 3141
 DEFAULT_GRPC_PORT = 50051
 CONTAINER_STARTUP_TIMEOUT = 60  # seconds
