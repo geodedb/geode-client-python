@@ -102,9 +102,6 @@ stages:
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
   PYTHONPATH: "$CI_PROJECT_DIR"
-  # SEC-024: Pin Geode server image to specific version (not :latest)
-  # Update this version when new Geode releases are published
-  GEODE_SERVER_VERSION: "v0.1.0"
 
 # Global cache for Python dependencies
 cache:
@@ -168,8 +165,7 @@ test:integration:
   stage: integration
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
   services:
-    # SEC-024: Use pinned version instead of :latest to prevent supply chain attacks
-    - name: $CI_REGISTRY/devnw/codepros/geode/geode:${GEODE_SERVER_VERSION}
+    - name: geodedb/geode:latest
       alias: geode
       command: ["serve", "--listen", "0.0.0.0:3141", "--log-level", "info"]
   variables:
