@@ -17,7 +17,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .proto import (
     BeginRequest,
-    BoolValue,
     CommitRequest,
     DoubleValue,
     ExecuteRequest,
@@ -425,7 +424,7 @@ class Connection:
         if value is None:
             return ProtoValue(null_val=NullValue())
         elif isinstance(value, bool):
-            return ProtoValue(bool_val=BoolValue(value=value))
+            return ProtoValue(bool_val=value)
         elif isinstance(value, int):
             return ProtoValue(int_val=IntValue(value=value, kind=IntKind.INT))
         elif isinstance(value, float):
@@ -454,7 +453,7 @@ class Connection:
                 decimal_value=Decimal(str(proto_val.double_val.value)),
             )
         elif proto_val.HasField("bool_val"):
-            return Value(kind=ValueKind.BOOL, bool_value=proto_val.bool_val.value)
+            return Value(kind=ValueKind.BOOL, bool_value=proto_val.bool_val)
         else:
             return Value(kind=ValueKind.NULL)
 

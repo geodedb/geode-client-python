@@ -412,9 +412,8 @@ class QuicTransport(Transport):
         if not self._connected:
             raise TransportError("Not connected")
 
-        # Wrap in ClientPacket
-        packet = ClientPacket(quic=msg)
-        data = packet.SerializeToString()
+        # Server uses transparent oneof (fd(null)) so encode QuicClientMessage directly
+        data = msg.SerializeToString()
 
         # 4-byte big-endian length prefix
         frame = struct.pack(">I", len(data)) + data
@@ -445,14 +444,10 @@ class QuicTransport(Transport):
         msg_data = self._buffer[4:total_needed]
         self._buffer = self._buffer[total_needed:]
 
-        # Decode ServerPacket
-        packet = ServerPacket()
-        packet.ParseFromString(msg_data)
-
-        if packet.HasField("quic"):
-            return packet.quic
-        else:
-            raise TransportError("Invalid server response: missing quic field")
+        # Server uses transparent oneof (fd(null)) so decode QuicServerMessage directly
+        message = QuicServerMessage()
+        message.ParseFromString(msg_data)
+        return message
 
     def _try_read_from_buffer(self) -> Optional[QuicServerMessage]:
         """Try to read a message from buffer without blocking."""
@@ -468,12 +463,10 @@ class QuicTransport(Transport):
         msg_data = self._buffer[4:total_needed]
         self._buffer = self._buffer[total_needed:]
 
-        packet = ServerPacket()
-        packet.ParseFromString(msg_data)
-
-        if packet.HasField("quic"):
-            return packet.quic
-        return None
+        # Server uses transparent oneof (fd(null)) so decode QuicServerMessage directly
+        message = QuicServerMessage()
+        message.ParseFromString(msg_data)
+        return message
 
     async def hello(self, request: HelloRequest) -> HelloResponse:
         """Send HELLO handshake."""
