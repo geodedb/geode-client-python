@@ -547,6 +547,27 @@ class GrpcTransport(Transport):
     def session_id(self) -> str:
         return self._session_id
 
+    def _fetch_server_cert(self, host: str, port: int) -> bytes:
+        """Fetch the server's TLS certificate for skip_verify connections.
+
+        Connects with verification disabled to retrieve the server's
+        certificate, then uses it as a trusted root CA so grpcio can
+        complete the TLS handshake without system CA validation.
+        """
+        import socket
+        import ssl as stdlib_ssl
+
+        ctx = stdlib_ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = stdlib_ssl.CERT_NONE
+
+        with socket.create_connection((host, port), timeout=10) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                cert_der = ssock.getpeercert(binary_form=True)
+                if cert_der is None:
+                    raise TransportError("No certificate from server")
+                return stdlib_ssl.DER_cert_to_PEM_cert(cert_der).encode()
+
     async def connect(self) -> None:
         """Establish gRPC connection."""
         if self._connected:
@@ -558,30 +579,56 @@ class GrpcTransport(Transport):
 
         target = f"{self.config.host}:{self.config.port}"
 
-        if self.config.tls_enabled and not self.config.skip_verify:
-            # Secure channel
-            if self.config.ca_cert:
-                with open(self.config.ca_cert, "rb") as f:
-                    ca_cert = f.read()
-            else:
-                ca_cert = None
+        if self.config.tls_enabled:
+            if self.config.skip_verify:
+                # TLS with verification disabled: fetch the server's
+                # self-signed cert and trust it directly.
+                try:
+                    server_cert = self._fetch_server_cert(
+                        self.config.host, self.config.port
+                    )
+                except Exception:
+                    server_cert = None
 
-            if self.config.client_cert and self.config.client_key:
-                with open(self.config.client_cert, "rb") as f:
-                    client_cert = f.read()
-                with open(self.config.client_key, "rb") as f:
-                    client_key = f.read()
-                credentials = grpc.ssl_channel_credentials(
-                    root_certificates=ca_cert,
-                    private_key=client_key,
-                    certificate_chain=client_cert,
-                )
+                if server_cert:
+                    credentials = grpc.ssl_channel_credentials(
+                        root_certificates=server_cert
+                    )
+                    options = [
+                        ("grpc.ssl_target_name_override", "localhost"),
+                    ]
+                    self._channel = grpc.aio.secure_channel(
+                        target, credentials, options=options
+                    )
+                else:
+                    # Fallback to insecure if cert fetch fails
+                    self._channel = grpc.aio.insecure_channel(target)
             else:
-                credentials = grpc.ssl_channel_credentials(root_certificates=ca_cert)
+                # Secure channel with full verification
+                if self.config.ca_cert:
+                    with open(self.config.ca_cert, "rb") as f:
+                        ca_cert = f.read()
+                else:
+                    ca_cert = None
 
-            self._channel = grpc.aio.secure_channel(target, credentials)
+                if self.config.client_cert and self.config.client_key:
+                    with open(self.config.client_cert, "rb") as f:
+                        client_cert = f.read()
+                    with open(self.config.client_key, "rb") as f:
+                        client_key = f.read()
+                    credentials = grpc.ssl_channel_credentials(
+                        root_certificates=ca_cert,
+                        private_key=client_key,
+                        certificate_chain=client_cert,
+                    )
+                else:
+                    credentials = grpc.ssl_channel_credentials(
+                        root_certificates=ca_cert
+                    )
+
+                self._channel = grpc.aio.secure_channel(target, credentials)
         else:
-            # Insecure channel
+            # Plaintext channel (no TLS)
             self._channel = grpc.aio.insecure_channel(target)
 
         self._stub = GeodeServiceStub(self._channel)

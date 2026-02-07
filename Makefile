@@ -20,6 +20,7 @@ GEODE_IMAGE ?= geodedb/geode:$(GEODE_VERSION)
 GEODE_CONTAINER ?= geode-python-test
 GEODE_HOST ?= 127.0.0.1
 GEODE_PORT ?= 3141
+GEODE_GRPC_PORT ?= 50051
 
 .PHONY: all build install install-dev clean test test-unit test-property test-integration \
         test-integration-docker bench lint fmt fmt-check typecheck doc coverage ci ci-quick \
@@ -60,6 +61,7 @@ help:
 	@echo "  make test-property - Run property-based tests (50 tests)"
 	@echo "  make test-integration - Run integration tests (requires Geode server)"
 	@echo "  make test-integration-docker - Run integration tests with Docker"
+	@echo "  make test-integration-grpc  - Run gRPC integration tests"
 	@echo "  make test-all      - Run ALL tests including integration"
 	@echo ""
 	@echo "Quality targets:"
@@ -187,6 +189,17 @@ test-integration-docker: docker-start
 	$(MAKE) docker-stop
 	@echo "✓ Docker integration tests complete (119 tests)"
 
+test-integration-grpc:
+	@echo "Running gRPC integration tests..."
+	@echo ""
+	@echo "Tests connect to Geode gRPC server at $(GEODE_HOST):$(GEODE_GRPC_PORT)"
+	@echo "Start server first: cd ../geode && ./zig-out/bin/geode serve --listen-grpc 0.0.0.0:50051"
+	@echo "Or use: make docker-start"
+	@echo ""
+	GEODE_TRANSPORT=grpc GEODE_HOST=$(GEODE_HOST) GEODE_PORT=$(GEODE_GRPC_PORT) \
+		$(VENV_PYTEST) tests/integration/ -v -m integration
+	@echo "✓ gRPC integration tests complete"
+
 test-all: test-unit test-property test-integration
 	@echo "✓ All tests complete (including integration)"
 
@@ -279,11 +292,13 @@ docker-start:
 	@$(DOCKER) rm -f $(GEODE_CONTAINER) 2>/dev/null || true
 	$(DOCKER) run -d --name $(GEODE_CONTAINER) \
 		-p $(GEODE_PORT):3141/udp \
+		-p $(GEODE_GRPC_PORT):50051/tcp \
 		$(GEODE_IMAGE) \
-		serve --listen 0.0.0.0:3141 --log-level info
+		serve --listen 0.0.0.0:3141 --listen-grpc 0.0.0.0:50051 --log-level info
 	@echo "✓ Geode container started"
 	@echo "  Container: $(GEODE_CONTAINER)"
-	@echo "  Port: $(GEODE_PORT)/udp"
+	@echo "  QUIC Port: $(GEODE_PORT)/udp"
+	@echo "  gRPC Port: $(GEODE_GRPC_PORT)/tcp"
 
 docker-stop:
 	@echo "Stopping Geode Docker container..."

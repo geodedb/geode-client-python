@@ -253,8 +253,7 @@ def client(geode_host: str, geode_port: int, transport_type: TransportType) -> C
         port=geode_port,
         transport_type=transport_type,
         skip_verify=True,  # Test container uses self-signed certs
-        tls_enabled=transport_type
-        != TransportType.GRPC,  # Disable TLS for gRPC in tests
+        tls_enabled=True,  # Server uses TLS on both QUIC and gRPC
     )
 
 
