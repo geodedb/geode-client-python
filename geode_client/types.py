@@ -35,6 +35,9 @@ class ValueKind(Enum):
     ENUM = auto()
     BIT_STRING = auto()
     RANGE = auto()
+    NODE = auto()
+    EDGE = auto()
+    PATH = auto()
 
 
 @dataclass
@@ -110,6 +113,15 @@ class Value:
             return self.time_value
         elif self.kind == ValueKind.RANGE:
             return self.range_value
+        elif self.kind in (ValueKind.NODE, ValueKind.EDGE, ValueKind.PATH):
+            return (
+                {
+                    k: v.raw_value if isinstance(v, Value) else v
+                    for k, v in self.object_value.items()
+                }
+                if self.object_value
+                else {}
+            )
         else:
             # For other types, return str_value
             return self.str_value

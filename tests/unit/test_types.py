@@ -801,3 +801,104 @@ class TestEdgeCases:
         val = decode_value(False, "BOOL")
         assert val.kind == ValueKind.BOOL
         assert not val.is_null
+
+
+class TestGraphValueKinds:
+    """Tests for NODE, EDGE, PATH value kinds."""
+
+    def test_node_kind_exists(self):
+        assert hasattr(ValueKind, "NODE")
+
+    def test_edge_kind_exists(self):
+        assert hasattr(ValueKind, "EDGE")
+
+    def test_path_kind_exists(self):
+        assert hasattr(ValueKind, "PATH")
+
+    def test_node_value_raw(self):
+        """Test NODE Value with object_value produces correct raw_value."""
+        node = Value(
+            kind=ValueKind.NODE,
+            object_value={
+                "id": Value(kind=ValueKind.INT, int_value=42),
+                "labels": Value(
+                    kind=ValueKind.ARRAY,
+                    array_value=[Value(kind=ValueKind.STRING, str_value="Person")],
+                ),
+                "properties": Value(
+                    kind=ValueKind.OBJECT,
+                    object_value={
+                        "name": Value(kind=ValueKind.STRING, str_value="Alice"),
+                    },
+                ),
+            },
+        )
+        raw = node.raw_value
+        assert raw["id"] == 42
+        assert raw["labels"] == ["Person"]
+        assert raw["properties"] == {"name": "Alice"}
+
+    def test_edge_value_raw(self):
+        """Test EDGE Value uses type/start_node/end_node field names."""
+        edge = Value(
+            kind=ValueKind.EDGE,
+            object_value={
+                "id": Value(kind=ValueKind.INT, int_value=100),
+                "start_node": Value(kind=ValueKind.INT, int_value=1),
+                "end_node": Value(kind=ValueKind.INT, int_value=2),
+                "type": Value(kind=ValueKind.STRING, str_value="KNOWS"),
+                "properties": Value(kind=ValueKind.OBJECT, object_value={}),
+            },
+        )
+        raw = edge.raw_value
+        assert raw["type"] == "KNOWS"
+        assert raw["start_node"] == 1
+        assert raw["end_node"] == 2
+        assert "label" not in raw
+        assert "from_id" not in raw
+        assert "to_id" not in raw
+
+    def test_path_value_raw(self):
+        """Test PATH Value with nodes and edges."""
+        path = Value(
+            kind=ValueKind.PATH,
+            object_value={
+                "nodes": Value(
+                    kind=ValueKind.ARRAY,
+                    array_value=[
+                        Value(
+                            kind=ValueKind.NODE,
+                            object_value={
+                                "id": Value(kind=ValueKind.INT, int_value=1),
+                                "labels": Value(kind=ValueKind.ARRAY, array_value=[]),
+                                "properties": Value(
+                                    kind=ValueKind.OBJECT, object_value={}
+                                ),
+                            },
+                        ),
+                    ],
+                ),
+                "edges": Value(
+                    kind=ValueKind.ARRAY,
+                    array_value=[
+                        Value(
+                            kind=ValueKind.EDGE,
+                            object_value={
+                                "id": Value(kind=ValueKind.INT, int_value=10),
+                                "start_node": Value(kind=ValueKind.INT, int_value=1),
+                                "end_node": Value(kind=ValueKind.INT, int_value=2),
+                                "type": Value(kind=ValueKind.STRING, str_value="REL"),
+                                "properties": Value(
+                                    kind=ValueKind.OBJECT, object_value={}
+                                ),
+                            },
+                        ),
+                    ],
+                ),
+            },
+        )
+        raw = path.raw_value
+        assert len(raw["nodes"]) == 1
+        assert len(raw["edges"]) == 1
+        assert raw["edges"][0]["type"] == "REL"
+        assert raw["edges"][0]["start_node"] == 1

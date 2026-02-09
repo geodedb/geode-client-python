@@ -454,6 +454,126 @@ class Connection:
             )
         elif proto_val.HasField("bool_val"):
             return Value(kind=ValueKind.BOOL, bool_value=proto_val.bool_val)
+        elif proto_val.HasField("bytes_val"):
+            return Value(kind=ValueKind.BYTEA, bytes_value=proto_val.bytes_val.value)
+        elif proto_val.HasField("list_val"):
+            items = [
+                self._proto_value_to_python(v, "") for v in proto_val.list_val.values
+            ]
+            return Value(kind=ValueKind.ARRAY, array_value=items)
+        elif proto_val.HasField("map_val"):
+            entries = {
+                entry.key: self._proto_value_to_python(entry.value, "")
+                for entry in proto_val.map_val.entries
+            }
+            return Value(kind=ValueKind.OBJECT, object_value=entries)
+        elif proto_val.HasField("node_val"):
+            node = proto_val.node_val
+            props = {
+                entry.key: self._proto_value_to_python(entry.value, "")
+                for entry in node.properties
+            }
+            return Value(
+                kind=ValueKind.NODE,
+                object_value={
+                    "id": Value(kind=ValueKind.INT, int_value=node.id),
+                    "labels": Value(
+                        kind=ValueKind.ARRAY,
+                        array_value=[
+                            Value(kind=ValueKind.STRING, str_value=lbl)
+                            for lbl in node.labels
+                        ],
+                    ),
+                    "properties": Value(kind=ValueKind.OBJECT, object_value=props),
+                },
+            )
+        elif proto_val.HasField("edge_val"):
+            edge = proto_val.edge_val
+            props = {
+                entry.key: self._proto_value_to_python(entry.value, "")
+                for entry in edge.properties
+            }
+            return Value(
+                kind=ValueKind.EDGE,
+                object_value={
+                    "id": Value(kind=ValueKind.INT, int_value=edge.id),
+                    "start_node": Value(kind=ValueKind.INT, int_value=edge.from_id),
+                    "end_node": Value(kind=ValueKind.INT, int_value=edge.to_id),
+                    "type": Value(kind=ValueKind.STRING, str_value=edge.label),
+                    "properties": Value(kind=ValueKind.OBJECT, object_value=props),
+                },
+            )
+        elif proto_val.HasField("path_val"):
+            path = proto_val.path_val
+            node_vals = []
+            for n in path.nodes:
+                n_props = {
+                    entry.key: self._proto_value_to_python(entry.value, "")
+                    for entry in n.properties
+                }
+                node_vals.append(
+                    Value(
+                        kind=ValueKind.NODE,
+                        object_value={
+                            "id": Value(kind=ValueKind.INT, int_value=n.id),
+                            "labels": Value(
+                                kind=ValueKind.ARRAY,
+                                array_value=[
+                                    Value(kind=ValueKind.STRING, str_value=lbl)
+                                    for lbl in n.labels
+                                ],
+                            ),
+                            "properties": Value(
+                                kind=ValueKind.OBJECT, object_value=n_props
+                            ),
+                        },
+                    )
+                )
+            edge_vals = []
+            for e in path.edges:
+                e_props = {
+                    entry.key: self._proto_value_to_python(entry.value, "")
+                    for entry in e.properties
+                }
+                edge_vals.append(
+                    Value(
+                        kind=ValueKind.EDGE,
+                        object_value={
+                            "id": Value(kind=ValueKind.INT, int_value=e.id),
+                            "start_node": Value(
+                                kind=ValueKind.INT, int_value=e.from_id
+                            ),
+                            "end_node": Value(kind=ValueKind.INT, int_value=e.to_id),
+                            "type": Value(kind=ValueKind.STRING, str_value=e.label),
+                            "properties": Value(
+                                kind=ValueKind.OBJECT, object_value=e_props
+                            ),
+                        },
+                    )
+                )
+            return Value(
+                kind=ValueKind.PATH,
+                object_value={
+                    "nodes": Value(kind=ValueKind.ARRAY, array_value=node_vals),
+                    "edges": Value(kind=ValueKind.ARRAY, array_value=edge_vals),
+                },
+            )
+        elif proto_val.HasField("ext_val"):
+            ext = proto_val.ext_val
+            if ext.HasField("text"):
+                return Value(kind=ValueKind.STRING, str_value=ext.text)
+            elif ext.HasField("int_val"):
+                return Value(kind=ValueKind.INT, int_value=ext.int_val)
+            elif ext.HasField("double_val"):
+                return Value(
+                    kind=ValueKind.DECIMAL,
+                    decimal_value=Decimal(str(ext.double_val)),
+                )
+            elif ext.HasField("bool_val"):
+                return Value(kind=ValueKind.BOOL, bool_value=ext.bool_val)
+            elif ext.HasField("bytes"):
+                return Value(kind=ValueKind.BYTEA, bytes_value=ext.bytes)
+            return Value(kind=ValueKind.STRING, str_value=ext.type_name)
         else:
             return Value(kind=ValueKind.NULL)
 

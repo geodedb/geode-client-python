@@ -33,9 +33,9 @@ class ConnectionPool:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 8443,
-        min_size: int = 2,
-        max_size: int = 10,
+        port: int = 3141,
+        min_size: int = 1,
+        max_size: int = 3,
         timeout: float = 30.0,
         **kwargs,
     ):
@@ -227,9 +227,9 @@ class PooledConnection:
 # Convenience function
 async def create_pool(
     host: str = "127.0.0.1",
-    port: int = 8443,
-    min_size: int = 2,
-    max_size: int = 10,
+    port: int = 3141,
+    min_size: int = 1,
+    max_size: int = 3,
     **kwargs,
 ) -> ConnectionPool:
     """

@@ -15,8 +15,8 @@ class TestConnectionPoolCreation:
     def test_creation_defaults(self):
         """Test pool creation with defaults."""
         pool = ConnectionPool()
-        assert pool.min_size == 2
-        assert pool.max_size == 10
+        assert pool.min_size == 1
+        assert pool.max_size == 3
         assert pool.timeout == 30.0
 
     def test_creation_custom_size(self):
@@ -431,19 +431,19 @@ class TestPoolDefaults:
         assert pool.client.host == "127.0.0.1"
 
     def test_default_port(self):
-        """Test default port is 8443."""
+        """Test default port is 3141."""
         pool = ConnectionPool()
-        assert pool.client.port == 8443
+        assert pool.client.port == 3141
 
     def test_default_min_size(self):
-        """Test default min_size is 2."""
+        """Test default min_size is 1."""
         pool = ConnectionPool()
-        assert pool.min_size == 2
+        assert pool.min_size == 1
 
     def test_default_max_size(self):
-        """Test default max_size is 10."""
+        """Test default max_size is 3."""
         pool = ConnectionPool()
-        assert pool.max_size == 10
+        assert pool.max_size == 3
 
     def test_default_timeout(self):
         """Test default timeout is 30.0."""

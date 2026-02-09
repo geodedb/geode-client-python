@@ -344,3 +344,132 @@ class TestGrpcServiceStub:
         assert hasattr(GeodeServiceServicer, "Rollback")
         assert hasattr(GeodeServiceServicer, "GetCdcDiagnostics")
         assert hasattr(GeodeServiceServicer, "ControlCdc")
+
+
+class TestProtoValueConversion:
+    """Tests for _proto_value_to_python complex type handling."""
+
+    def _make_conn(self):
+        from geode_client.client import Connection
+
+        return Connection.__new__(Connection)
+
+    def test_edge_val_conversion(self):
+        """Test that edge_val proto is converted with correct field names."""
+        from geode_client.proto import EdgeValue, IntValue, MapEntry
+        from geode_client.proto import Value as ProtoValue
+        from geode_client.types import ValueKind
+
+        edge = EdgeValue(
+            id=100,
+            from_id=1,
+            to_id=2,
+            label="KNOWS",
+            properties=[
+                MapEntry(key="since", value=ProtoValue(int_val=IntValue(value=2020)))
+            ],
+        )
+        proto_val = ProtoValue(edge_val=edge)
+
+        conn = self._make_conn()
+        val = conn._proto_value_to_python(proto_val, "EDGE")
+
+        assert val.kind == ValueKind.EDGE
+        raw = val.raw_value
+        assert raw["type"] == "KNOWS"
+        assert raw["start_node"] == 1
+        assert raw["end_node"] == 2
+        assert raw["id"] == 100
+        assert raw["properties"]["since"] == 2020
+        assert "label" not in raw
+        assert "from_id" not in raw
+
+    def test_node_val_conversion(self):
+        """Test that node_val proto is converted correctly."""
+        from geode_client.proto import MapEntry, NodeValue, StringValue
+        from geode_client.proto import Value as ProtoValue
+        from geode_client.types import ValueKind
+
+        node = NodeValue(
+            id=42,
+            labels=["Person"],
+            properties=[
+                MapEntry(
+                    key="name", value=ProtoValue(string_val=StringValue(value="Alice"))
+                )
+            ],
+        )
+        proto_val = ProtoValue(node_val=node)
+
+        conn = self._make_conn()
+        val = conn._proto_value_to_python(proto_val, "NODE")
+
+        assert val.kind == ValueKind.NODE
+        raw = val.raw_value
+        assert raw["id"] == 42
+        assert raw["labels"] == ["Person"]
+        assert raw["properties"]["name"] == "Alice"
+
+    def test_list_val_conversion(self):
+        """Test that list_val proto is converted to ARRAY."""
+        from geode_client.proto import IntValue, ListValue
+        from geode_client.proto import Value as ProtoValue
+        from geode_client.types import ValueKind
+
+        list_val = ListValue(
+            values=[
+                ProtoValue(int_val=IntValue(value=1)),
+                ProtoValue(int_val=IntValue(value=2)),
+            ]
+        )
+        proto_val = ProtoValue(list_val=list_val)
+
+        conn = self._make_conn()
+        val = conn._proto_value_to_python(proto_val, "")
+
+        assert val.kind == ValueKind.ARRAY
+        assert len(val.array_value) == 2
+        assert val.array_value[0].int_value == 1
+
+    def test_map_val_conversion(self):
+        """Test that map_val proto is converted to OBJECT."""
+        from geode_client.proto import MapEntry, MapValue, StringValue
+        from geode_client.proto import Value as ProtoValue
+        from geode_client.types import ValueKind
+
+        map_val = MapValue(
+            entries=[
+                MapEntry(
+                    key="color", value=ProtoValue(string_val=StringValue(value="red"))
+                ),
+            ]
+        )
+        proto_val = ProtoValue(map_val=map_val)
+
+        conn = self._make_conn()
+        val = conn._proto_value_to_python(proto_val, "")
+
+        assert val.kind == ValueKind.OBJECT
+        assert val.object_value["color"].str_value == "red"
+
+    def test_path_val_conversion(self):
+        """Test that path_val proto is converted correctly."""
+        from geode_client.proto import EdgeValue, NodeValue, PathValue
+        from geode_client.proto import Value as ProtoValue
+        from geode_client.types import ValueKind
+
+        path = PathValue(
+            nodes=[NodeValue(id=1, labels=["A"]), NodeValue(id=2, labels=["B"])],
+            edges=[EdgeValue(id=10, from_id=1, to_id=2, label="REL")],
+        )
+        proto_val = ProtoValue(path_val=path)
+
+        conn = self._make_conn()
+        val = conn._proto_value_to_python(proto_val, "PATH")
+
+        assert val.kind == ValueKind.PATH
+        raw = val.raw_value
+        assert len(raw["nodes"]) == 2
+        assert len(raw["edges"]) == 1
+        assert raw["edges"][0]["type"] == "REL"
+        assert raw["edges"][0]["start_node"] == 1
