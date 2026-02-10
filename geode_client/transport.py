@@ -417,14 +417,19 @@ class QuicTransport(Transport):
         frame = struct.pack(">I", len(data)) + data
         self._protocol.write_to_stream(self._stream_id, frame)
 
-    async def _read_message(self) -> QuicServerMessage:
-        """Read a length-prefixed protobuf message."""
+    async def _read_message(self, read_timeout: float = 30.0) -> QuicServerMessage:
+        """Read a length-prefixed protobuf message with timeout."""
         if not self._connected:
             raise TransportError("Not connected")
 
         # Read 4-byte length prefix
         while len(self._buffer) < 4:
-            data = await self._reader_queue.get()
+            try:
+                data = await asyncio.wait_for(
+                    self._reader_queue.get(), timeout=read_timeout
+                )
+            except asyncio.TimeoutError:
+                raise TransportError("Timeout reading message length")
             if data is None:
                 raise TransportError("Stream closed")
             self._buffer += data
@@ -434,7 +439,12 @@ class QuicTransport(Transport):
 
         # Read message body
         while len(self._buffer) < total_needed:
-            data = await self._reader_queue.get()
+            try:
+                data = await asyncio.wait_for(
+                    self._reader_queue.get(), timeout=read_timeout
+                )
+            except asyncio.TimeoutError:
+                raise TransportError("Timeout reading message body")
             if data is None:
                 raise TransportError("Stream closed")
             self._buffer += data
