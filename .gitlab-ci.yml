@@ -111,6 +111,16 @@ cache:
     - .venv/
 
 # =============================================================================
+# SBOM overrides (external download may fail due to DNS/network issues)
+# =============================================================================
+
+sbom-generate:
+  allow_failure: true
+
+sbom-scan:
+  allow_failure: true
+
+# =============================================================================
 # Type Checking (separate from lint for gradual adoption)
 # =============================================================================
 
