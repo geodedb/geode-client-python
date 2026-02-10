@@ -230,7 +230,7 @@ pages:
       pip install "sphinx>=7.0,<9.0" "sphinx-rtd-theme>=2.0,<3.0"
   script:
     - |
-      if [ -d "docs" ]; then
+      if [ -f "docs/Makefile" ]; then
         cd docs && make html
         mv _build/html ../public
       else
