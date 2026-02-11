@@ -343,14 +343,15 @@ class QuicTransport(Transport):
             alpn_protocols=["geode/1"],
         )
 
+        # Always set server_name for SNI (required on aarch64 even with skip_verify)
+        if self.config.server_name:
+            configuration.server_name = self.config.server_name
+        else:
+            configuration.server_name = self.config.host
+
         if self.config.skip_verify:
             configuration.verify_mode = 0
         else:
-            if self.config.server_name:
-                configuration.server_name = self.config.server_name
-            else:
-                configuration.server_name = self.config.host
-
             if self.config.ca_cert and os.path.exists(self.config.ca_cert):
                 configuration.load_verify_locations(self.config.ca_cert)
 
@@ -605,7 +606,7 @@ class GrpcTransport(Transport):
                         root_certificates=server_cert
                     )
                     options = [
-                        ("grpc.ssl_target_name_override", "localhost"),
+                        ("grpc.ssl_target_name_override", self.config.server_name or self.config.host),
                     ]
                     self._channel = grpc.aio.secure_channel(
                         target, credentials, options=options
