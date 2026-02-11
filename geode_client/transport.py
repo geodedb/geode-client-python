@@ -629,7 +629,8 @@ class GrpcTransport(Transport):
                     )
                     # Use the cert's CN for hostname override so TLS
                     # verification passes with self-signed certs.
-                    override = self.config.server_name or cert_cn or self.config.host
+                    # Prefer CN from the actual cert since we're trusting it.
+                    override = cert_cn or self.config.server_name or self.config.host
                     options = [
                         ("grpc.ssl_target_name_override", override),
                     ]
