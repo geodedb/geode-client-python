@@ -581,7 +581,23 @@ class GrpcTransport(Transport):
                 cert_der = ssock.getpeercert(binary_form=True)
                 if cert_der is None:
                     raise TransportError("No certificate from server")
-                return stdlib_ssl.DER_cert_to_PEM_cert(cert_der).encode()
+                pem = stdlib_ssl.DER_cert_to_PEM_cert(cert_der).encode()
+                # Extract the CN for ssl_target_name_override
+                cn = None
+                try:
+                    import tempfile, os
+                    with tempfile.NamedTemporaryFile(suffix=".pem", delete=False) as f:
+                        f.write(pem)
+                        f.flush()
+                        parsed = stdlib_ssl._ssl._test_decode_cert(f.name)
+                    os.unlink(f.name)
+                    for rdn in parsed.get("subject", ()):
+                        for attr_type, attr_value in rdn:
+                            if attr_type == "commonName":
+                                cn = attr_value
+                except Exception:
+                    pass
+                return pem, cn
 
     async def connect(self) -> None:
         """Establish gRPC connection."""
@@ -598,19 +614,24 @@ class GrpcTransport(Transport):
             if self.config.skip_verify:
                 # TLS with verification disabled: fetch the server's
                 # self-signed cert and trust it directly.
+                server_cert = None
+                cert_cn = None
                 try:
-                    server_cert = self._fetch_server_cert(
+                    server_cert, cert_cn = self._fetch_server_cert(
                         self.config.host, self.config.port
                     )
                 except Exception:
-                    server_cert = None
+                    pass
 
                 if server_cert:
                     credentials = grpc.ssl_channel_credentials(
                         root_certificates=server_cert
                     )
+                    # Use the cert's CN for hostname override so TLS
+                    # verification passes with self-signed certs.
+                    override = self.config.server_name or cert_cn or self.config.host
                     options = [
-                        ("grpc.ssl_target_name_override", self.config.server_name or self.config.host),
+                        ("grpc.ssl_target_name_override", override),
                     ]
                     self._channel = grpc.aio.secure_channel(
                         target, credentials, options=options
