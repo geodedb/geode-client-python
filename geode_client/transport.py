@@ -564,6 +564,9 @@ class GrpcTransport(Transport):
         Connects with verification disabled to retrieve the server's
         certificate, then uses it as a trusted root CA so grpcio can
         complete the TLS handshake without system CA validation.
+
+        Negotiates ALPN 'h2' so the server's ALPN callback succeeds
+        (required by gRPC/HTTP2 servers that enforce ALPN selection).
         """
         import socket
         import ssl as stdlib_ssl
@@ -571,6 +574,7 @@ class GrpcTransport(Transport):
         ctx = stdlib_ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = stdlib_ssl.CERT_NONE
+        ctx.set_alpn_protocols(["h2"])
 
         with socket.create_connection((host, port), timeout=10) as sock:
             with ctx.wrap_socket(sock, server_hostname=host) as ssock:
