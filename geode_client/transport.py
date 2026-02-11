@@ -592,28 +592,10 @@ class GrpcTransport(Transport):
 
         if self.config.tls_enabled:
             if self.config.skip_verify:
-                # TLS with verification disabled: fetch the server's
-                # self-signed cert and trust it directly.
-                try:
-                    server_cert = self._fetch_server_cert(
-                        self.config.host, self.config.port
-                    )
-                except Exception:
-                    server_cert = None
-
-                if server_cert:
-                    credentials = grpc.ssl_channel_credentials(
-                        root_certificates=server_cert
-                    )
-                    options = [
-                        ("grpc.ssl_target_name_override", self.config.server_name or self.config.host),
-                    ]
-                    self._channel = grpc.aio.secure_channel(
-                        target, credentials, options=options
-                    )
-                else:
-                    # Fallback to insecure if cert fetch fails
-                    self._channel = grpc.aio.insecure_channel(target)
+                # TLS with verification disabled: use an insecure channel.
+                # Avoid _fetch_server_cert() as the raw TLS probe can crash
+                # servers that expect HTTP/2 framing immediately after handshake.
+                self._channel = grpc.aio.insecure_channel(target)
             else:
                 # Secure channel with full verification
                 if self.config.ca_cert:
