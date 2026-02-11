@@ -702,7 +702,8 @@ class GrpcTransport(Transport):
         """Execute a query via gRPC streaming.
 
         Returns a QuicServerMessage wrapping the ExecutionResponse for
-        compatibility with the QUIC transport interface.
+        compatibility with the QUIC transport interface.  Saves the stream
+        so that subsequent pages can be read via ``read_next()``.
         """
         try:
             # Execute returns a stream - get first response
@@ -710,6 +711,8 @@ class GrpcTransport(Transport):
             response = await stream.read()
             if response is None:
                 raise TransportError("No response from server")
+            # Keep the stream so read_next() can pull additional pages
+            self._exec_stream = stream
             # Wrap typed response into QuicServerMessage for caller compatibility
             return QuicServerMessage(execute=response)
         except Exception as e:
@@ -718,6 +721,21 @@ class GrpcTransport(Transport):
                     str(e), "grpc", self.config.host, self.config.port
                 )
             raise
+
+    async def read_next(self) -> QuicServerMessage:
+        """Read the next message from the current Execute stream.
+
+        The gRPC Execute RPC is server-streaming: the first message
+        carries the schema and the second (and subsequent) messages carry
+        data pages.  This mirrors QuicTransport.read_next().
+        """
+        stream = getattr(self, "_exec_stream", None)
+        if stream is None:
+            raise TransportError("No active Execute stream")
+        response = await stream.read()
+        if response is None:
+            raise TransportError("Execute stream ended unexpectedly")
+        return QuicServerMessage(execute=response)
 
     async def pull(self, request: PullRequest) -> QuicServerMessage:
         """Pull more results via gRPC.

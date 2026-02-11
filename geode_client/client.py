@@ -34,7 +34,6 @@ from .proto import (
     Value as ProtoValue,
 )
 from .transport import (
-    QuicTransport,
     Transport,
     TransportConfig,
     TransportConnectionError,
@@ -704,7 +703,7 @@ class Connection:
                 return first_page, pager
 
             # Need to read next message for data page (schema was first)
-            if isinstance(self._transport, QuicTransport):
+            if hasattr(self._transport, "read_next"):
                 resp = await self._transport.read_next()
                 if resp.HasField("execute"):
                     exec_resp = resp.execute
