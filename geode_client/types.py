@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 
 class ValueKind(Enum):
@@ -291,7 +291,7 @@ def _str_value(kind: ValueKind) -> Any:
 
 
 # Dispatch table for O(1) type lookup in decode_value()
-_DECODERS: Dict[str, Any] = {
+_DECODERS: Dict[str, Callable[[Any], "Value"]] = {
     "INT": _decode_int,
     "DECIMAL": _decode_decimal,
     "BOOL": _decode_bool,
