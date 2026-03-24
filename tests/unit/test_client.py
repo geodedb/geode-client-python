@@ -373,6 +373,90 @@ class TestConnectionTransport:
         mock_transport.rollback.assert_called_once()
 
 
+class TestSavepointInjection:
+    """Test that savepoint/rollback_to prevent GQL injection."""
+
+    @pytest.fixture
+    def connected_conn(self):
+        """Create a connected Connection with mocked transport."""
+        conn = Connection()
+        transport = MagicMock()
+        transport.session_id = "sess_123"
+        transport.execute = AsyncMock()
+        transport.read_next = AsyncMock()
+        # Mock execute response for savepoint (no-result statement)
+        response = MagicMock()
+        response.HasField = MagicMock(
+            side_effect=lambda f: f == "execute"
+        )
+        exec_resp = MagicMock()
+        exec_resp.HasField = MagicMock(return_value=False)
+        exec_resp.schema.columns = []
+        data_page = MagicMock()
+        data_page.rows = []
+        data_page.final = True
+        exec_resp.pages = [data_page]
+        response.execute = exec_resp
+        transport.execute.return_value = response
+        conn._transport = transport
+        conn._connected = True
+        return conn
+
+    def test_savepoint_valid_name_passes_validation(self):
+        """Test savepoint with valid identifier name passes validation."""
+        from geode_client.validate import identifier
+
+        # Should not raise
+        result = identifier("sp1")
+        assert result == "sp1"
+        result = identifier("my_savepoint_2")
+        assert result == "my_savepoint_2"
+
+    @pytest.mark.asyncio
+    async def test_savepoint_rejects_injection(self, connected_conn):
+        """Test savepoint rejects GQL injection in name."""
+        from geode_client.validate import ValidationError
+
+        with pytest.raises(ValidationError):
+            await connected_conn.savepoint("x; DELETE (n) DETACH; SAVEPOINT y")
+
+    @pytest.mark.asyncio
+    async def test_savepoint_rejects_semicolon(self, connected_conn):
+        """Test savepoint rejects semicolons."""
+        from geode_client.validate import ValidationError
+
+        with pytest.raises(ValidationError):
+            await connected_conn.savepoint("sp1; DROP DATABASE")
+
+    @pytest.mark.asyncio
+    async def test_savepoint_rejects_spaces(self, connected_conn):
+        """Test savepoint rejects names with spaces."""
+        from geode_client.validate import ValidationError
+
+        with pytest.raises(ValidationError):
+            await connected_conn.savepoint("sp 1")
+
+    @pytest.mark.asyncio
+    async def test_rollback_to_rejects_injection(self, connected_conn):
+        """Test rollback_to rejects GQL injection in savepoint name."""
+        from geode_client.validate import ValidationError
+
+        evil_sp = Savepoint(
+            name="x; MATCH (n) DELETE n DETACH; ROLLBACK TO SAVEPOINT y",
+            connection=connected_conn,
+        )
+        with pytest.raises(ValidationError):
+            await connected_conn.rollback_to(evil_sp)
+
+    def test_rollback_to_valid_name_passes_validation(self):
+        """Test rollback_to with valid savepoint name passes validation."""
+        from geode_client.validate import identifier
+
+        # Should not raise - valid names for rollback_to
+        result = identifier("valid_savepoint")
+        assert result == "valid_savepoint"
+
+
 class TestConnectionClose:
     """Test Connection close method."""
 

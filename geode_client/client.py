@@ -10,10 +10,13 @@ Wire format: 4-byte Big Endian length prefix + protobuf message body.
 
 import asyncio
 import logging
+import warnings
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from . import validate
 
 from .proto import (
     BeginRequest,
@@ -411,12 +414,14 @@ class Connection:
 
     async def savepoint(self, name: str) -> "Savepoint":
         """Create a savepoint within the current transaction."""
-        await self.execute(f"SAVEPOINT {name}")
-        return Savepoint(name=name, connection=self)
+        validated_name = validate.identifier(name)
+        await self.execute(f"SAVEPOINT {validated_name}")
+        return Savepoint(name=validated_name, connection=self)
 
     async def rollback_to(self, savepoint: "Savepoint") -> None:
         """Rollback to a savepoint."""
-        await self.execute(f"ROLLBACK TO SAVEPOINT {savepoint.name}")
+        validated_name = validate.identifier(savepoint.name)
+        await self.execute(f"ROLLBACK TO SAVEPOINT {validated_name}")
 
     def _python_to_proto_value(self, value: Any) -> ProtoValue:
         """Convert a Python value to a protobuf Value."""
