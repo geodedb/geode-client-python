@@ -57,7 +57,6 @@ setup(
             "pytest-cov>=4.0.0",
             "pytest-benchmark>=4.0.0",
             "hypothesis>=6.0.0",
-            "black>=23.0.0",
             "mypy>=1.0.0",
             "ruff>=0.1.0",
             "pre-commit>=3.0.0",

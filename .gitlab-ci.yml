@@ -17,7 +17,7 @@ include:
       stage: lint
       python_version: "3.12"
       source_path: "geode_client/"
-      run_black: true
+      run_black: false
       run_ruff: true
       run_mypy: false  # Enable when type hints are complete
 
