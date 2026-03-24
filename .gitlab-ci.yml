@@ -37,7 +37,7 @@ include:
       python_version: "3.12"
       source_path: "geode_client"
       test_path: "tests/unit/"
-      coverage_threshold: "70"  # Lower threshold: transport code requires live server
+      coverage_threshold: "80"
       output_dir: "coverage"
 
   # Benchmarks (using @main until released)

@@ -1,11 +1,17 @@
 """Unit tests for transport module - DSN parsing and transport selection."""
 
+import asyncio
+import struct
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from geode_client.transport import (
+    MAX_MESSAGE_SIZE,
     GrpcTransport,
     QuicTransport,
     TransportConfig,
+    TransportConnectionError,
     TransportError,
     TransportType,
     UnsupportedSchemeError,
@@ -231,3 +237,552 @@ class TestUnsupportedSchemeError:
         """Test that UnsupportedSchemeError is a TransportError."""
         error = UnsupportedSchemeError("http")
         assert isinstance(error, TransportError)
+
+
+class TestTransportConnectionError:
+    """Test TransportConnectionError exception."""
+
+    def test_error_message_format(self):
+        """Test error message includes transport, host, port."""
+        error = TransportConnectionError("failed", "quic", "localhost", 3141)
+        assert "quic://localhost:3141" in str(error)
+        assert "failed" in str(error)
+        assert error.transport == "quic"
+        assert error.host == "localhost"
+        assert error.port == 3141
+
+    def test_is_transport_error(self):
+        """Test that TransportConnectionError is a TransportError."""
+        error = TransportConnectionError("x", "grpc", "host", 50051)
+        assert isinstance(error, TransportError)
+
+
+class TestTransportConfigRepr:
+    """Test TransportConfig __repr__ with password redaction."""
+
+    def test_repr_no_password(self):
+        """Test repr without password shows empty string marker."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        r = repr(config)
+        assert "password=''" in r
+        assert "localhost" in r
+
+    def test_repr_with_password_redacted(self):
+        """Test repr with password shows *** instead of actual password."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+            password="supersecret",
+        )
+        r = repr(config)
+        assert "supersecret" not in r
+        assert "password=***" in r
+
+    def test_repr_contains_transport_type(self):
+        """Test repr includes transport type."""
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="10.0.0.1",
+            port=50051,
+        )
+        r = repr(config)
+        assert "GRPC" in r
+        assert "10.0.0.1" in r
+        assert "50051" in r
+
+
+class TestDsnParsingEdgeCases:
+    """Test DSN parsing edge cases and additional query params."""
+
+    def test_insecure_tls_skip_verify_alias(self):
+        """Test insecure_tls_skip_verify alias."""
+        config = parse_dsn("quic://localhost:3141?insecure_tls_skip_verify=1")
+        assert config.skip_verify is True
+
+    def test_insecure_alias(self):
+        """Test insecure alias for skip_verify."""
+        config = parse_dsn("quic://localhost:3141?insecure=true")
+        assert config.skip_verify is True
+
+    def test_skip_verify_false_values(self):
+        """Test skip_verify with false-ish values."""
+        config = parse_dsn("quic://localhost:3141?skip_verify=0")
+        assert config.skip_verify is False
+
+    def test_tls_true_values(self):
+        """Test various truthy TLS values."""
+        for val in ("1", "true", "yes", "on"):
+            config = parse_dsn(f"grpc://localhost:50051?tls={val}")
+            assert config.tls_enabled is True, f"Failed for tls={val}"
+
+    def test_tls_false_values(self):
+        """Test TLS disabled with false value."""
+        config = parse_dsn("grpc://localhost:50051?tls=false")
+        assert config.tls_enabled is False
+
+    def test_ca_alias(self):
+        """Test ca alias for ca_cert."""
+        config = parse_dsn("quic://localhost:3141?ca=/path/to/ca.pem")
+        assert config.ca_cert == "/path/to/ca.pem"
+
+    def test_cert_alias(self):
+        """Test cert alias for client_cert."""
+        config = parse_dsn("quic://localhost:3141?cert=/path/to/cert.pem")
+        assert config.client_cert == "/path/to/cert.pem"
+
+    def test_key_alias(self):
+        """Test key alias for client_key."""
+        config = parse_dsn("quic://localhost:3141?key=/path/to/key.pem")
+        assert config.client_key == "/path/to/key.pem"
+
+    def test_server_name_param(self):
+        """Test server_name query parameter."""
+        config = parse_dsn("quic://localhost:3141?server_name=geode.example.com")
+        assert config.server_name == "geode.example.com"
+
+    def test_hello_name_param(self):
+        """Test hello_name query parameter."""
+        config = parse_dsn("quic://localhost:3141?hello_name=my-client")
+        assert config.hello_name == "my-client"
+
+    def test_hello_ver_param(self):
+        """Test hello_ver query parameter."""
+        config = parse_dsn("quic://localhost:3141?hello_ver=2.0.0")
+        assert config.hello_ver == "2.0.0"
+
+    def test_conformance_param(self):
+        """Test conformance query parameter."""
+        config = parse_dsn("quic://localhost:3141?conformance=full")
+        assert config.conformance == "full"
+
+    def test_no_query_params(self):
+        """Test DSN with no query parameters uses defaults."""
+        config = parse_dsn("quic://10.0.0.1:3141")
+        assert config.tls_enabled is True
+        assert config.skip_verify is False
+        assert config.username == ""
+        assert config.password == ""
+        assert config.page_size == 1000
+
+    def test_no_host_defaults(self):
+        """Test DSN with no host defaults to 127.0.0.1."""
+        config = parse_dsn("quic://:3141")
+        assert config.host == "127.0.0.1"
+
+
+class TestCreateTransportEdgeCases:
+    """Test create_transport edge cases."""
+
+    def test_create_transport_invalid_type(self):
+        """Test create_transport raises ValueError for unknown type."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        # Monkey-patch transport_type to something invalid
+        config.transport_type = "invalid"
+        with pytest.raises(ValueError, match="Unknown transport type"):
+            create_transport(config)
+
+
+class TestQuicTransportUnit:
+    """Unit tests for QuicTransport without network."""
+
+    def test_init(self):
+        """Test QuicTransport initialization."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        assert transport.config is config
+        assert transport.session_id == ""
+        assert transport._connected is False
+        assert transport._buffer == b""
+
+    def test_try_read_from_buffer_empty(self):
+        """Test _try_read_from_buffer with empty buffer returns None."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._buffer = b""
+        assert transport._try_read_from_buffer() is None
+
+    def test_try_read_from_buffer_partial_header(self):
+        """Test _try_read_from_buffer with partial length header returns None."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._buffer = b"\x00\x00"  # Only 2 bytes, need 4
+        assert transport._try_read_from_buffer() is None
+
+    def test_try_read_from_buffer_incomplete_body(self):
+        """Test _try_read_from_buffer with incomplete message body returns None."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        # Length says 100 bytes but only have header
+        transport._buffer = struct.pack(">I", 100)
+        assert transport._try_read_from_buffer() is None
+
+    def test_try_read_from_buffer_oversized_message(self):
+        """Test _try_read_from_buffer rejects oversized messages."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        # Create a length prefix exceeding MAX_MESSAGE_SIZE
+        transport._buffer = struct.pack(">I", MAX_MESSAGE_SIZE + 1)
+        with pytest.raises(TransportError, match="Message too large"):
+            transport._try_read_from_buffer()
+
+    def test_try_read_from_buffer_valid_message(self):
+        """Test _try_read_from_buffer with a valid empty protobuf message."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        # Empty protobuf message (0 bytes)
+        transport._buffer = struct.pack(">I", 0)
+        result = transport._try_read_from_buffer()
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_write_message_not_connected(self):
+        """Test _write_message raises when not connected."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        from geode_client.proto import QuicClientMessage
+
+        with pytest.raises(TransportError, match="Not connected"):
+            await transport._write_message(QuicClientMessage())
+
+    @pytest.mark.asyncio
+    async def test_read_message_not_connected(self):
+        """Test _read_message raises when not connected."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        with pytest.raises(TransportError, match="Not connected"):
+            await transport._read_message()
+
+    @pytest.mark.asyncio
+    async def test_read_message_timeout(self):
+        """Test _read_message timeout raises TransportError."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._buffer = b""
+        # Create a queue that never gets data
+        transport._reader_queue = asyncio.Queue()
+        with pytest.raises(TransportError, match="Timeout reading message"):
+            await transport._read_message(read_timeout=0.01)
+
+    @pytest.mark.asyncio
+    async def test_read_message_stream_closed(self):
+        """Test _read_message raises when stream sends None (closed)."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._buffer = b""
+        transport._reader_queue = asyncio.Queue()
+        transport._reader_queue.put_nowait(None)
+        with pytest.raises(TransportError, match="Stream closed"):
+            await transport._read_message()
+
+    @pytest.mark.asyncio
+    async def test_read_message_oversized(self):
+        """Test _read_message rejects oversized length prefix."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._buffer = b""
+        transport._reader_queue = asyncio.Queue()
+        # Send a length prefix that exceeds MAX_MESSAGE_SIZE
+        oversized_header = struct.pack(">I", MAX_MESSAGE_SIZE + 1)
+        transport._reader_queue.put_nowait(oversized_header)
+        with pytest.raises(TransportError, match="Message too large"):
+            await transport._read_message()
+
+    @pytest.mark.asyncio
+    async def test_read_message_body_timeout(self):
+        """Test _read_message timeout while reading body."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._buffer = b""
+        transport._reader_queue = asyncio.Queue()
+        # Send valid header saying 100 bytes, but no body data
+        header = struct.pack(">I", 100)
+        transport._reader_queue.put_nowait(header)
+        with pytest.raises(TransportError, match="Timeout reading message"):
+            await transport._read_message(read_timeout=0.01)
+
+    @pytest.mark.asyncio
+    async def test_read_message_body_stream_closed(self):
+        """Test _read_message stream closed while reading body."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._buffer = b""
+        transport._reader_queue = asyncio.Queue()
+        # Send valid header then None (stream closed)
+        header = struct.pack(">I", 100)
+        transport._reader_queue.put_nowait(header)
+        transport._reader_queue.put_nowait(None)
+        with pytest.raises(TransportError, match="Stream closed"):
+            await transport._read_message()
+
+    @pytest.mark.asyncio
+    async def test_read_message_valid(self):
+        """Test _read_message with valid empty protobuf."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._buffer = b""
+        transport._reader_queue = asyncio.Queue()
+        # Empty message (0-length body)
+        header = struct.pack(">I", 0)
+        transport._reader_queue.put_nowait(header)
+        result = await transport._read_message()
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_close_not_connected(self):
+        """Test close when not connected is no-op."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        await transport.close()  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_close_connected(self):
+        """Test close cleans up state."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._protocol = MagicMock()
+        transport._connection_cm = MagicMock()
+        transport._connection_cm.__aexit__ = AsyncMock()
+        transport._buffer = b"some data"
+
+        await transport.close()
+
+        assert transport._connected is False
+        assert transport._protocol is None
+        assert transport._connection_cm is None
+        assert transport._buffer == b""
+
+    @pytest.mark.asyncio
+    async def test_read_next_from_buffer(self):
+        """Test read_next reads from buffer first."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        # Put a valid empty message in the buffer
+        transport._buffer = struct.pack(">I", 0)
+        result = await transport.read_next()
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_read_next_fallback_to_read_message(self):
+        """Test read_next falls back to _read_message when buffer empty."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._buffer = b""
+        transport._reader_queue = asyncio.Queue()
+        # Put valid empty message in queue
+        transport._reader_queue.put_nowait(struct.pack(">I", 0))
+        result = await transport.read_next()
+        assert result is not None
+
+
+class TestGrpcTransportUnit:
+    """Unit tests for GrpcTransport without network."""
+
+    def test_init(self):
+        """Test GrpcTransport initialization."""
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="localhost",
+            port=50051,
+        )
+        transport = GrpcTransport(config)
+        assert transport.config is config
+        assert transport.session_id == ""
+        assert transport._connected is False
+        assert transport._channel is None
+        assert transport._stub is None
+
+    @pytest.mark.asyncio
+    async def test_close_not_connected(self):
+        """Test close when not connected is no-op."""
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="localhost",
+            port=50051,
+        )
+        transport = GrpcTransport(config)
+        await transport.close()  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_close_connected(self):
+        """Test close cleans up state."""
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="localhost",
+            port=50051,
+        )
+        transport = GrpcTransport(config)
+        transport._connected = True
+        transport._channel = MagicMock()
+        transport._channel.close = AsyncMock()
+        transport._stub = MagicMock()
+
+        await transport.close()
+
+        assert transport._connected is False
+        assert transport._channel is None
+        assert transport._stub is None
+
+    @pytest.mark.asyncio
+    async def test_ping_returns_false_on_exception(self):
+        """Test ping returns False when stub raises."""
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="localhost",
+            port=50051,
+        )
+        transport = GrpcTransport(config)
+        transport._connected = True
+        transport._stub = MagicMock()
+        transport._stub.Ping = AsyncMock(side_effect=Exception("network error"))
+        result = await transport.ping()
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_pull_raises_not_implemented(self):
+        """Test pull raises NotImplementedError for gRPC."""
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="localhost",
+            port=50051,
+        )
+        transport = GrpcTransport(config)
+        from geode_client.proto import PullRequest
+
+        with pytest.raises(NotImplementedError, match="Pull is not available via gRPC"):
+            await transport.pull(PullRequest())
+
+    @pytest.mark.asyncio
+    async def test_read_next_no_stream(self):
+        """Test read_next raises when no active stream."""
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="localhost",
+            port=50051,
+        )
+        transport = GrpcTransport(config)
+        with pytest.raises(TransportError, match="No active Execute stream"):
+            await transport.read_next()
+
+    @pytest.mark.asyncio
+    async def test_read_next_stream_ended(self):
+        """Test read_next raises when stream returns None."""
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="localhost",
+            port=50051,
+        )
+        transport = GrpcTransport(config)
+        mock_stream = MagicMock()
+        mock_stream.read = AsyncMock(return_value=None)
+        transport._exec_stream = mock_stream
+        with pytest.raises(TransportError, match="Execute stream ended unexpectedly"):
+            await transport.read_next()
+
+    @pytest.mark.asyncio
+    async def test_read_next_success(self):
+        """Test read_next returns wrapped response."""
+        from geode_client.proto import ExecutionResponse
+
+        config = TransportConfig(
+            transport_type=TransportType.GRPC,
+            host="localhost",
+            port=50051,
+        )
+        transport = GrpcTransport(config)
+        mock_response = ExecutionResponse()
+        mock_stream = MagicMock()
+        mock_stream.read = AsyncMock(return_value=mock_response)
+        transport._exec_stream = mock_stream
+        result = await transport.read_next()
+        assert result is not None
+        assert result.HasField("execute")
