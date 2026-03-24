@@ -66,6 +66,10 @@ class UnsupportedSchemeError(TransportError):
         )
 
 
+# Maximum protobuf message size (64 MB)
+MAX_MESSAGE_SIZE = 64 * 1024 * 1024
+
+
 @dataclass
 class TransportConfig:
     """Transport configuration parsed from DSN."""
@@ -85,6 +89,17 @@ class TransportConfig:
     hello_name: str = "geode-python"
     hello_ver: str = "0.1.0"
     conformance: str = "min"
+
+    def __repr__(self) -> str:
+        """Redact password from repr to prevent credential leaks in logs."""
+        pw = "***" if self.password else "''"
+        return (
+            f"TransportConfig(transport_type={self.transport_type!r}, "
+            f"host={self.host!r}, port={self.port!r}, "
+            f"tls_enabled={self.tls_enabled!r}, "
+            f"skip_verify={self.skip_verify!r}, "
+            f"password={pw})"
+        )
 
 
 def parse_dsn(dsn: str) -> TransportConfig:
@@ -440,6 +455,11 @@ class QuicTransport(Transport):
             self._buffer += data
 
         msg_len = struct.unpack(">I", self._buffer[:4])[0]
+        if msg_len > MAX_MESSAGE_SIZE:
+            raise TransportError(
+                f"Message too large: {msg_len} bytes exceeds "
+                f"maximum of {MAX_MESSAGE_SIZE} bytes"
+            )
         total_needed = 4 + msg_len
 
         # Read message body
@@ -468,6 +488,11 @@ class QuicTransport(Transport):
             return None
 
         msg_len = struct.unpack(">I", self._buffer[:4])[0]
+        if msg_len > MAX_MESSAGE_SIZE:
+            raise TransportError(
+                f"Message too large: {msg_len} bytes exceeds "
+                f"maximum of {MAX_MESSAGE_SIZE} bytes"
+            )
         total_needed = 4 + msg_len
 
         if len(self._buffer) < total_needed:
