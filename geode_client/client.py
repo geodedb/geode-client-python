@@ -450,6 +450,44 @@ class Connection:
                 string_val=StringValue(value=str(value), kind=StringKind.STRING)
             )
 
+    def _build_node_value(self, node: Any) -> Value:
+        """Build a NODE Value from a protobuf NodeValue."""
+        props = {
+            entry.key: self._proto_value_to_python(entry.value, "")
+            for entry in node.properties
+        }
+        return Value(
+            kind=ValueKind.NODE,
+            object_value={
+                "id": Value(kind=ValueKind.INT, int_value=node.id),
+                "labels": Value(
+                    kind=ValueKind.ARRAY,
+                    array_value=[
+                        Value(kind=ValueKind.STRING, str_value=lbl)
+                        for lbl in node.labels
+                    ],
+                ),
+                "properties": Value(kind=ValueKind.OBJECT, object_value=props),
+            },
+        )
+
+    def _build_edge_value(self, edge: Any) -> Value:
+        """Build an EDGE Value from a protobuf EdgeValue."""
+        props = {
+            entry.key: self._proto_value_to_python(entry.value, "")
+            for entry in edge.properties
+        }
+        return Value(
+            kind=ValueKind.EDGE,
+            object_value={
+                "id": Value(kind=ValueKind.INT, int_value=edge.id),
+                "start_node": Value(kind=ValueKind.INT, int_value=edge.from_id),
+                "end_node": Value(kind=ValueKind.INT, int_value=edge.to_id),
+                "type": Value(kind=ValueKind.STRING, str_value=edge.label),
+                "properties": Value(kind=ValueKind.OBJECT, object_value=props),
+            },
+        )
+
     def _proto_value_to_python(self, proto_val: ProtoValue, type_name: str) -> Value:
         """Convert a protobuf Value to a typed Value object."""
         if proto_val.HasField("null_val"):
@@ -479,94 +517,22 @@ class Connection:
             }
             return Value(kind=ValueKind.OBJECT, object_value=entries)
         elif proto_val.HasField("node_val"):
-            node = proto_val.node_val
-            props = {
-                entry.key: self._proto_value_to_python(entry.value, "")
-                for entry in node.properties
-            }
-            return Value(
-                kind=ValueKind.NODE,
-                object_value={
-                    "id": Value(kind=ValueKind.INT, int_value=node.id),
-                    "labels": Value(
-                        kind=ValueKind.ARRAY,
-                        array_value=[
-                            Value(kind=ValueKind.STRING, str_value=lbl)
-                            for lbl in node.labels
-                        ],
-                    ),
-                    "properties": Value(kind=ValueKind.OBJECT, object_value=props),
-                },
-            )
+            return self._build_node_value(proto_val.node_val)
         elif proto_val.HasField("edge_val"):
-            edge = proto_val.edge_val
-            props = {
-                entry.key: self._proto_value_to_python(entry.value, "")
-                for entry in edge.properties
-            }
-            return Value(
-                kind=ValueKind.EDGE,
-                object_value={
-                    "id": Value(kind=ValueKind.INT, int_value=edge.id),
-                    "start_node": Value(kind=ValueKind.INT, int_value=edge.from_id),
-                    "end_node": Value(kind=ValueKind.INT, int_value=edge.to_id),
-                    "type": Value(kind=ValueKind.STRING, str_value=edge.label),
-                    "properties": Value(kind=ValueKind.OBJECT, object_value=props),
-                },
-            )
+            return self._build_edge_value(proto_val.edge_val)
         elif proto_val.HasField("path_val"):
             path = proto_val.path_val
-            node_vals = []
-            for n in path.nodes:
-                n_props = {
-                    entry.key: self._proto_value_to_python(entry.value, "")
-                    for entry in n.properties
-                }
-                node_vals.append(
-                    Value(
-                        kind=ValueKind.NODE,
-                        object_value={
-                            "id": Value(kind=ValueKind.INT, int_value=n.id),
-                            "labels": Value(
-                                kind=ValueKind.ARRAY,
-                                array_value=[
-                                    Value(kind=ValueKind.STRING, str_value=lbl)
-                                    for lbl in n.labels
-                                ],
-                            ),
-                            "properties": Value(
-                                kind=ValueKind.OBJECT, object_value=n_props
-                            ),
-                        },
-                    )
-                )
-            edge_vals = []
-            for e in path.edges:
-                e_props = {
-                    entry.key: self._proto_value_to_python(entry.value, "")
-                    for entry in e.properties
-                }
-                edge_vals.append(
-                    Value(
-                        kind=ValueKind.EDGE,
-                        object_value={
-                            "id": Value(kind=ValueKind.INT, int_value=e.id),
-                            "start_node": Value(
-                                kind=ValueKind.INT, int_value=e.from_id
-                            ),
-                            "end_node": Value(kind=ValueKind.INT, int_value=e.to_id),
-                            "type": Value(kind=ValueKind.STRING, str_value=e.label),
-                            "properties": Value(
-                                kind=ValueKind.OBJECT, object_value=e_props
-                            ),
-                        },
-                    )
-                )
             return Value(
                 kind=ValueKind.PATH,
                 object_value={
-                    "nodes": Value(kind=ValueKind.ARRAY, array_value=node_vals),
-                    "edges": Value(kind=ValueKind.ARRAY, array_value=edge_vals),
+                    "nodes": Value(
+                        kind=ValueKind.ARRAY,
+                        array_value=[self._build_node_value(n) for n in path.nodes],
+                    ),
+                    "edges": Value(
+                        kind=ValueKind.ARRAY,
+                        array_value=[self._build_edge_value(e) for e in path.edges],
+                    ),
                 },
             )
         elif proto_val.HasField("ext_val"):
