@@ -167,61 +167,39 @@ def parse_dsn(dsn: str) -> TransportConfig:
     if parsed.query:
         params = parse_qs(parsed.query)
 
-        # TLS settings (support multiple aliases per DSN spec)
-        if "tls" in params:
-            config.tls_enabled = params["tls"][0].lower() in ("1", "true", "yes", "on")
+        def _parse_bool(raw: str) -> bool:
+            return raw.lower() in ("1", "true", "yes", "on")
 
-        # Insecure TLS skip verify aliases (primary: insecure_tls_skip_verify)
+        # TLS enable/disable
+        if "tls" in params:
+            config.tls_enabled = _parse_bool(params["tls"][0])
+
+        # Insecure TLS skip verify aliases (first match wins)
         for key in ("insecure_tls_skip_verify", "insecure", "skip_verify"):
             if key in params:
-                config.skip_verify = params[key][0].lower() in (
-                    "1",
-                    "true",
-                    "yes",
-                    "on",
-                )
+                config.skip_verify = _parse_bool(params[key][0])
                 break
 
-        # CA certificate (support both aliases)
-        if "ca" in params:
-            config.ca_cert = params["ca"][0]
-        elif "ca_cert" in params:
-            config.ca_cert = params["ca_cert"][0]
+        # Mapping of (config field, aliases, converter) for simple params.
+        # Each entry tries aliases in order; first match wins.
+        _PARAM_MAP: list[tuple[str, tuple[str, ...], type]] = [
+            ("ca_cert", ("ca", "ca_cert"), str),
+            ("client_cert", ("cert", "client_cert"), str),
+            ("client_key", ("key", "client_key"), str),
+            ("server_name", ("server_name",), str),
+            ("username", ("username", "user"), str),
+            ("password", ("password", "pass"), str),
+            ("page_size", ("page_size",), int),
+            ("hello_name", ("hello_name",), str),
+            ("hello_ver", ("hello_ver",), str),
+            ("conformance", ("conformance",), str),
+        ]
 
-        # Client certificate (support both aliases)
-        if "cert" in params:
-            config.client_cert = params["cert"][0]
-        elif "client_cert" in params:
-            config.client_cert = params["client_cert"][0]
-
-        # Client key (support both aliases)
-        if "key" in params:
-            config.client_key = params["key"][0]
-        elif "client_key" in params:
-            config.client_key = params["client_key"][0]
-
-        if "server_name" in params:
-            config.server_name = params["server_name"][0]
-
-        # Authentication
-        if "username" in params:
-            config.username = params["username"][0]
-        elif "user" in params:
-            config.username = params["user"][0]
-        if "password" in params:
-            config.password = params["password"][0]
-        elif "pass" in params:
-            config.password = params["pass"][0]
-
-        # Protocol settings
-        if "page_size" in params:
-            config.page_size = int(params["page_size"][0])
-        if "hello_name" in params:
-            config.hello_name = params["hello_name"][0]
-        if "hello_ver" in params:
-            config.hello_ver = params["hello_ver"][0]
-        if "conformance" in params:
-            config.conformance = params["conformance"][0]
+        for field, aliases, converter in _PARAM_MAP:
+            for alias in aliases:
+                if alias in params:
+                    setattr(config, field, converter(params[alias][0]))
+                    break
 
     return config
 
