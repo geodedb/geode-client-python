@@ -144,9 +144,9 @@ class TestValueConstruction:
         assert len(val.array_value) == 0
 
     def test_array_default_init(self):
-        """Test ARRAY default initialization."""
+        """Test ARRAY default initialization (None without explicit value)."""
         val = Value(kind=ValueKind.ARRAY)
-        assert val.array_value == []
+        assert val.array_value is None
 
     def test_object_value(self):
         """Test OBJECT value construction."""
@@ -164,9 +164,9 @@ class TestValueConstruction:
         assert len(val.object_value) == 0
 
     def test_object_default_init(self):
-        """Test OBJECT default initialization."""
+        """Test OBJECT default initialization (None without explicit value)."""
         val = Value(kind=ValueKind.OBJECT)
-        assert val.object_value == {}
+        assert val.object_value is None
 
     def test_bytea_value(self):
         """Test BYTEA value construction."""

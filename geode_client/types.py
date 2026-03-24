@@ -69,11 +69,8 @@ class Value:
     time_value: Optional[Union[datetime, date, time]] = None
     range_value: Optional[Range] = None
 
-    def __post_init__(self):
-        if self.array_value is None:
-            self.array_value = []
-        if self.object_value is None:
-            self.object_value = {}
+    # No __post_init__: avoid wasteful empty list/dict allocation for scalar types.
+    # as_array and as_object already guard for None.
 
     @property
     def is_null(self) -> bool:
@@ -227,6 +224,98 @@ class Value:
             return f"Value({self.kind.name})"
 
 
+def _decode_int(raw: Any) -> Value:
+    try:
+        return Value(kind=ValueKind.INT, int_value=int(raw))
+    except (ValueError, TypeError):
+        return Value(kind=ValueKind.STRING, str_value=str(raw))
+
+
+def _decode_decimal(raw: Any) -> Value:
+    s = str(raw).strip('"')
+    try:
+        dec = Decimal(s)
+        scale = s.split(".")[-1] if "." in s else ""
+        return Value(kind=ValueKind.DECIMAL, decimal_value=dec, decimal_scale=scale)
+    except Exception:
+        return Value(kind=ValueKind.DECIMAL, str_value=s)
+
+
+def _decode_bool(raw: Any) -> Value:
+    return Value(kind=ValueKind.BOOL, bool_value=bool(raw))
+
+
+def _decode_bytea(raw: Any) -> Value:
+    s = str(raw)
+    if s.startswith("\\x"):
+        return Value(
+            kind=ValueKind.BYTEA, bytes_value=bytes.fromhex(s[2:]), str_value=s
+        )
+    return Value(kind=ValueKind.BYTEA, str_value=s)
+
+
+def _decode_date(raw: Any) -> Value:
+    s = str(raw)
+    try:
+        dt = datetime.strptime(s, "%Y-%m-%d").date()
+        return Value(kind=ValueKind.DATE, str_value=s, time_value=dt)
+    except ValueError:
+        return Value(kind=ValueKind.DATE, str_value=s)
+
+
+def _decode_timestamp(raw: Any, kind: ValueKind) -> Value:
+    s = str(raw)
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return Value(kind=kind, str_value=s, time_value=dt)
+    except ValueError:
+        return Value(kind=kind, str_value=s)
+
+
+def _decode_range(raw: Any) -> Value:
+    if isinstance(raw, dict):
+        r = Range()
+        if "bounds" in raw:
+            r.bounds = raw["bounds"]
+        if "lower" in raw:
+            r.lower = decode_value(raw["lower"], "")
+        if "upper" in raw:
+            r.upper = decode_value(raw["upper"], "")
+        return Value(kind=ValueKind.RANGE, range_value=r)
+    return Value(kind=ValueKind.RANGE, str_value=str(raw))
+
+
+def _str_value(kind: ValueKind) -> Any:
+    """Return a decoder that wraps raw as str_value with the given kind."""
+    return lambda raw: Value(kind=kind, str_value=str(raw))
+
+
+# Dispatch table for O(1) type lookup in decode_value()
+_DECODERS: Dict[str, Any] = {
+    "INT": _decode_int,
+    "DECIMAL": _decode_decimal,
+    "BOOL": _decode_bool,
+    "STRING": _str_value(ValueKind.STRING),
+    "BYTEA": _decode_bytea,
+    "JSON": _str_value(ValueKind.JSON),
+    "JSONB": _str_value(ValueKind.JSONB),
+    "XML": _str_value(ValueKind.XML),
+    "URL": _str_value(ValueKind.URL),
+    "URI": _str_value(ValueKind.URL),
+    "DOMAIN": _str_value(ValueKind.DOMAIN),
+    "UUID": _str_value(ValueKind.UUID),
+    "ENUM": _str_value(ValueKind.ENUM),
+    "BIT": _str_value(ValueKind.BIT_STRING),
+    "VARBIT": _str_value(ValueKind.BIT_STRING),
+    "DATE": _decode_date,
+    "TIMESTAMP": lambda raw: _decode_timestamp(raw, ValueKind.TIMESTAMP),
+    "TIMESTAMPTZ": lambda raw: _decode_timestamp(raw, ValueKind.TIMESTAMPTZ),
+    "TIME": _str_value(ValueKind.TIME),
+    "TIMETZ": _str_value(ValueKind.TIMETZ),
+    "INTERVAL": _str_value(ValueKind.INTERVAL),
+}
+
+
 def decode_value(raw: Any, type_name: str) -> Value:
     """
     Decode a JSON value into a typed Value object.
@@ -243,104 +332,33 @@ def decode_value(raw: Any, type_name: str) -> Value:
 
     type_upper = type_name.upper()
 
-    if type_upper == "INT":
-        try:
-            return Value(kind=ValueKind.INT, int_value=int(raw))
-        except (ValueError, TypeError):
-            # If conversion fails, store as string representation
-            return Value(kind=ValueKind.STRING, str_value=str(raw))
-    elif type_upper == "DECIMAL":
-        s = str(raw).strip('"')
-        try:
-            dec = Decimal(s)
-            scale = s.split(".")[-1] if "." in s else ""
-            return Value(kind=ValueKind.DECIMAL, decimal_value=dec, decimal_scale=scale)
-        except Exception:
-            # If conversion fails, store as string representation
-            return Value(kind=ValueKind.DECIMAL, str_value=s)
-    elif type_upper == "BOOL":
-        return Value(kind=ValueKind.BOOL, bool_value=bool(raw))
-    elif type_upper == "STRING":
-        return Value(kind=ValueKind.STRING, str_value=str(raw))
-    elif type_upper == "BYTEA":
-        s = str(raw)
-        if s.startswith("\\x"):
-            bytes_val = bytes.fromhex(s[2:])
-            return Value(kind=ValueKind.BYTEA, bytes_value=bytes_val, str_value=s)
-        return Value(kind=ValueKind.BYTEA, str_value=s)
-    elif type_upper == "JSON":
-        return Value(kind=ValueKind.JSON, str_value=str(raw))
-    elif type_upper == "JSONB":
-        return Value(kind=ValueKind.JSONB, str_value=str(raw))
-    elif type_upper == "XML":
-        return Value(kind=ValueKind.XML, str_value=str(raw))
-    elif type_upper in ("URL", "URI"):
-        return Value(kind=ValueKind.URL, str_value=str(raw))
-    elif type_upper == "DOMAIN":
-        return Value(kind=ValueKind.DOMAIN, str_value=str(raw))
-    elif type_upper == "UUID":
-        return Value(kind=ValueKind.UUID, str_value=str(raw))
-    elif type_upper == "ENUM":
-        return Value(kind=ValueKind.ENUM, str_value=str(raw))
-    elif type_upper in ("BIT", "VARBIT"):
-        return Value(kind=ValueKind.BIT_STRING, str_value=str(raw))
-    elif type_upper == "DATE":
-        s = str(raw)
-        try:
-            dt = datetime.strptime(s, "%Y-%m-%d").date()
-            return Value(kind=ValueKind.DATE, str_value=s, time_value=dt)
-        except ValueError:
-            return Value(kind=ValueKind.DATE, str_value=s)
-    elif type_upper == "TIMESTAMP":
-        s = str(raw)
-        try:
-            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-            return Value(kind=ValueKind.TIMESTAMP, str_value=s, time_value=dt)
-        except ValueError:
-            return Value(kind=ValueKind.TIMESTAMP, str_value=s)
-    elif type_upper == "TIMESTAMPTZ":
-        s = str(raw)
-        try:
-            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-            return Value(kind=ValueKind.TIMESTAMPTZ, str_value=s, time_value=dt)
-        except ValueError:
-            return Value(kind=ValueKind.TIMESTAMPTZ, str_value=s)
-    elif type_upper == "TIME":
-        return Value(kind=ValueKind.TIME, str_value=str(raw))
-    elif type_upper == "TIMETZ":
-        return Value(kind=ValueKind.TIMETZ, str_value=str(raw))
-    elif type_upper == "INTERVAL":
-        return Value(kind=ValueKind.INTERVAL, str_value=str(raw))
-    elif "RANGE" in type_upper:
-        if isinstance(raw, dict):
-            r = Range()
-            if "bounds" in raw:
-                r.bounds = raw["bounds"]
-            if "lower" in raw:
-                r.lower = decode_value(raw["lower"], "")
-            if "upper" in raw:
-                r.upper = decode_value(raw["upper"], "")
-            return Value(kind=ValueKind.RANGE, range_value=r)
-        return Value(kind=ValueKind.RANGE, str_value=str(raw))
+    # O(1) dispatch for known types
+    decoder = _DECODERS.get(type_upper)
+    if decoder is not None:
+        return decoder(raw)
 
-    # Handle arrays and objects
+    # RANGE requires substring match
+    if "RANGE" in type_upper:
+        return _decode_range(raw)
+
+    # Fallback: infer from Python type
     if isinstance(raw, list):
-        arr = [decode_value(item, "") for item in raw]
-        return Value(kind=ValueKind.ARRAY, array_value=arr)
-    elif isinstance(raw, dict):
-        obj = {k: decode_value(v, "") for k, v in raw.items()}
-        return Value(kind=ValueKind.OBJECT, object_value=obj)
-    elif isinstance(raw, str):
+        return Value(
+            kind=ValueKind.ARRAY, array_value=[decode_value(item, "") for item in raw]
+        )
+    if isinstance(raw, dict):
+        return Value(
+            kind=ValueKind.OBJECT,
+            object_value={k: decode_value(v, "") for k, v in raw.items()},
+        )
+    if isinstance(raw, str):
         return Value(kind=ValueKind.STRING, str_value=raw)
-    # IMPORTANT: Check bool BEFORE int because Python's bool is a subclass of int
-    # isinstance(True, int) returns True, so we must handle bool first
-    elif isinstance(raw, bool):
+    # Check bool BEFORE int because Python's bool is a subclass of int
+    if isinstance(raw, bool):
         return Value(kind=ValueKind.BOOL, bool_value=raw)
-    elif isinstance(raw, (int, float)):
-        if isinstance(raw, int):
-            return Value(kind=ValueKind.INT, int_value=raw)
-        else:
-            dec = Decimal(str(raw))
-            return Value(kind=ValueKind.DECIMAL, decimal_value=dec)
+    if isinstance(raw, int):
+        return Value(kind=ValueKind.INT, int_value=raw)
+    if isinstance(raw, float):
+        return Value(kind=ValueKind.DECIMAL, decimal_value=Decimal(str(raw)))
 
     return Value(kind=ValueKind.STRING, str_value=str(raw))
