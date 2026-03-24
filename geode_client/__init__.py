@@ -46,7 +46,7 @@ from .client import (
     SecurityWarning,
     open_database,
 )
-from .pool import ConnectionPool
+from .pool import ConnectionPool, create_pool
 from .query_builder import (
     EdgeDirection,
     PatternBuilder,
@@ -99,6 +99,7 @@ __all__ = [
     "PlanOperation",
     # Connection pool
     "ConnectionPool",
+    "create_pool",
     # Authentication
     "AuthClient",
     "User",

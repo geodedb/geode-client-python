@@ -49,7 +49,7 @@ from geode_client import Client
 
 async def main():
     # Create client
-    client = Client(host="127.0.0.1", port=8443, skip_verify=True)
+    client = Client(host="127.0.0.1", port=3141, skip_verify=True)
 
     # Execute query
     async with client.connection() as conn:
@@ -173,9 +173,9 @@ from geode_client import ConnectionPool
 # Create pool
 pool = ConnectionPool(
     host="localhost",
-    port=8443,
+    port=3141,
     min_size=2,
-    max_size=10,
+    max_size=10,  # default is 3
     skip_verify=True
 )
 
@@ -341,7 +341,7 @@ grpc://host:port?param=value&param2=value2   # gRPC transport (default port 5005
 client = Client.from_url("quic://localhost")
 
 # QUIC with explicit port and options
-client = Client.from_url("quic://geode.example.com:8443?insecure_tls_skip_verify=true&page_size=500")
+client = Client.from_url("quic://geode.example.com:3141?insecure_tls_skip_verify=true&page_size=500")
 
 # gRPC with default port (50051)
 client = Client.from_url("grpc://localhost")
@@ -401,7 +401,7 @@ When using `Client()` constructor directly:
 ```python
 client = Client(
     host="geode.example.com",
-    port=8443,
+    port=3141,
     ca_cert="/path/to/ca.crt",
     client_cert="/path/to/client.crt",
     client_key="/path/to/client.key",
