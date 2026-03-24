@@ -10,14 +10,12 @@ Wire format: 4-byte Big Endian length prefix + protobuf message body.
 
 import asyncio
 import logging
-import warnings
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import validate
-
 from .proto import (
     BeginRequest,
     CommitRequest,

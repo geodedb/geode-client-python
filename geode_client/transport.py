@@ -12,7 +12,7 @@ import os
 import struct
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from .proto import (
@@ -558,7 +558,7 @@ class GrpcTransport(Transport):
     def session_id(self) -> str:
         return self._session_id
 
-    def _fetch_server_cert(self, host: str, port: int) -> bytes:
+    def _fetch_server_cert(self, host: str, port: int) -> Tuple[bytes, Optional[str]]:
         """Fetch the server's TLS certificate for skip_verify connections.
 
         Connects with verification disabled to retrieve the server's
@@ -585,7 +585,9 @@ class GrpcTransport(Transport):
                 # Extract the CN for ssl_target_name_override
                 cn = None
                 try:
-                    import tempfile, os
+                    import os
+                    import tempfile
+
                     with tempfile.NamedTemporaryFile(suffix=".pem", delete=False) as f:
                         f.write(pem)
                         f.flush()
