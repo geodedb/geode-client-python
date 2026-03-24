@@ -29,7 +29,7 @@ pip install -e ".[dev,integration,benchmark,property]"
 ### Test Commands
 
 ```bash
-# Run all unit tests (537 tests)
+# Run all unit tests (642 tests)
 pytest tests/unit/
 
 # Run with coverage
@@ -86,7 +86,7 @@ geode-client-python/
 │   │   ├── __init__.py     # Protobuf message exports
 │   │   ├── geode_pb2.py    # Generated protobuf messages
 │   │   └── geode_pb2_grpc.py # Generated gRPC stubs
-│   ├── types.py            # Value type system (23 types)
+│   ├── types.py            # Value type system (26 types)
 │   ├── query_builder.py    # QueryBuilder, PatternBuilder, PredicateBuilder
 │   ├── pool.py             # ConnectionPool for concurrent workloads
 │   ├── auth.py             # AuthClient for RBAC/RLS
@@ -96,7 +96,7 @@ geode-client-python/
 ├── scripts/
 │   └── generate_proto.sh   # Regenerate protobuf code
 ├── tests/
-│   ├── unit/               # Unit tests (537 tests)
+│   ├── unit/               # Unit tests (642 tests)
 │   │   ├── test_types.py
 │   │   ├── test_query_builder.py
 │   │   ├── test_pool.py
@@ -104,7 +104,8 @@ geode-client-python/
 │   │   ├── test_transport.py  # DSN parsing tests
 │   │   ├── test_protobuf.py   # Protobuf roundtrip tests
 │   │   ├── test_error.py
-│   │   └── test_validate.py
+│   │   ├── test_validate.py
+│   │   └── test_prepared_statement.py
 │   ├── integration/        # Integration tests (119 tests)
 │   │   ├── conftest.py     # Docker container management (QUIC + gRPC)
 │   │   ├── test_basic_operations.py
@@ -140,6 +141,12 @@ Core client functionality:
 - **`Page`**: Query result container with columns and rows.
 - **`Column`**: Column metadata (name, type).
 - **`Savepoint`**: Transaction savepoint for partial rollback.
+- **`PreparedStatement`**: Client-side prepared statement with parameter extraction.
+- **`BatchResult`**: Result container for batch query execution.
+- **`QueryPlan`**: Execution plan from `explain()`.
+- **`QueryProfile`**: Execution profile from `profile()`.
+- **`PlanOperation`**: Individual operation within a query plan.
+- **`open_database()`**: Convenience function for URL-based client creation.
 
 **Error Classes**:
 
@@ -147,6 +154,7 @@ Core client functionality:
 - `GeodeConnectionError` - Connection failures
 - `QueryError` - Query execution failures
 - `AuthError` - Authentication failures
+- `SecurityWarning` - Warning for insecure operations (e.g., `skip_verify=True`)
 
 ### geode_client/transport.py
 
@@ -173,7 +181,7 @@ Generated protobuf code (from `proto/geode.proto`):
 
 Type system for GQL values:
 
-- **`ValueKind`**: Enum of 23 supported types (NULL, INT, BOOL, STRING, DECIMAL, ARRAY, OBJECT, BYTEA, DATE, TIME, TIMESTAMP, etc.)
+- **`ValueKind`**: Enum of 26 supported types (NULL, INT, BOOL, STRING, DECIMAL, ARRAY, OBJECT, BYTEA, DATE, TIME, TIMESTAMP, NODE, EDGE, PATH, etc.)
 - **`Value`**: Container for typed values with accessors (`as_int`, `as_string`, `as_decimal`, etc.)
 - **`Range`**: Range type with lower/upper bounds
 - **`decode_value()`**: Converts JSON values to typed `Value` objects
@@ -467,7 +475,7 @@ pool = ConnectionPool(timeout=60.0, ...)
 ### Required
 
 - `aioquic>=0.9.0` - QUIC transport implementation
-- `protobuf>=4.21.0` - Protobuf wire format
+- `protobuf>=6.31.0` - Protobuf wire format
 - `grpcio>=1.50.0` - gRPC transport implementation
 
 ### Development
