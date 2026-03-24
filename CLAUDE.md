@@ -29,7 +29,7 @@ pip install -e ".[dev,integration,benchmark,property]"
 ### Test Commands
 
 ```bash
-# Run all unit tests (642 tests)
+# Run all unit tests (735 tests)
 pytest tests/unit/
 
 # Run with coverage
@@ -96,7 +96,7 @@ geode-client-python/
 ├── scripts/
 │   └── generate_proto.sh   # Regenerate protobuf code
 ├── tests/
-│   ├── unit/               # Unit tests (642 tests)
+│   ├── unit/               # Unit tests (735 tests)
 │   │   ├── test_types.py
 │   │   ├── test_query_builder.py
 │   │   ├── test_pool.py
