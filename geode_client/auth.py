@@ -734,7 +734,7 @@ class AuthClient:
             raise AuthError(f"Check permission failed: {message}")
 
         result = resp.get("result", {})
-        return result.get("allowed", False)
+        return bool(result.get("allowed", False))
 
     def _parse_user(self, data: Dict[str, Any]) -> User:
         """Parse user data from JSON response."""
