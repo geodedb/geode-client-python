@@ -425,7 +425,7 @@ class TestConnectionState:
         assert conn._connected is False
         assert conn._transport is None
 
-    def test_initial_lock_created(self):
-        """Test connection creates a lock."""
+    def test_no_connection_level_lock(self):
+        """Test connection delegates locking to transport layer."""
         conn = Connection()
-        assert conn._lock is not None
+        assert not hasattr(conn, "_lock")

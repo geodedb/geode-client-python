@@ -319,10 +319,9 @@ class Connection:
         self.transport_type = transport_type
         self.tls_enabled = tls_enabled
 
-        # Transport state
+        # Transport state (serialization handled by transport-level lock)
         self._transport: Optional[Transport] = None
         self._connected = False
-        self._lock = asyncio.Lock()
 
     async def __aenter__(self) -> "Connection":
         """Async context manager entry."""
@@ -397,27 +396,24 @@ class Connection:
 
     async def begin(self) -> None:
         """Begin a transaction."""
-        async with self._lock:
-            req = BeginRequest(session_id=self._transport.session_id)
-            resp = await self._transport.begin(req)
-            if not resp.HasField("begin"):
-                raise GeodeError("Expected BEGIN response")
+        req = BeginRequest(session_id=self._transport.session_id)
+        resp = await self._transport.begin(req)
+        if not resp.HasField("begin"):
+            raise GeodeError("Expected BEGIN response")
 
     async def commit(self) -> None:
         """Commit the current transaction."""
-        async with self._lock:
-            req = CommitRequest(session_id=self._transport.session_id)
-            resp = await self._transport.commit(req)
-            if not resp.HasField("commit"):
-                raise GeodeError("Expected COMMIT response")
+        req = CommitRequest(session_id=self._transport.session_id)
+        resp = await self._transport.commit(req)
+        if not resp.HasField("commit"):
+            raise GeodeError("Expected COMMIT response")
 
     async def rollback(self) -> None:
         """Rollback the current transaction."""
-        async with self._lock:
-            req = RollbackRequest(session_id=self._transport.session_id)
-            resp = await self._transport.rollback(req)
-            if not resp.HasField("rollback"):
-                raise GeodeError("Expected ROLLBACK response")
+        req = RollbackRequest(session_id=self._transport.session_id)
+        resp = await self._transport.rollback(req)
+        if not resp.HasField("rollback"):
+            raise GeodeError("Expected ROLLBACK response")
 
     async def savepoint(self, name: str) -> "Savepoint":
         """Create a savepoint within the current transaction."""
@@ -681,78 +677,77 @@ class Connection:
         Returns:
             Tuple of (first_page, pager_function)
         """
-        async with self._lock:
-            if page_size is None:
-                page_size = self.page_size
+        if page_size is None:
+            page_size = self.page_size
 
-            # Convert params to protobuf Param list
-            param_list = []
-            if params:
-                for k, v in params.items():
-                    param_list.append(
-                        Param(name=k, value=self._python_to_proto_value(v))
-                    )
-
-            # Send Execute request
-            exec_req = ExecuteRequest(
-                session_id=self._transport.session_id,
-                query=text,
-                params=param_list,
-            )
-            resp = await self._transport.execute(exec_req)
-
-            if not resp.HasField("execute"):
-                raise QueryError("Expected Execute response")
-
-            exec_resp = resp.execute
-
-            # Check for error
-            if exec_resp.HasField("error"):
-                raise QueryError(f"{exec_resp.error.code}: {exec_resp.error.message}")
-
-            # Parse columns from schema
-            columns: List[Column] = []
-            if exec_resp.HasField("schema"):
-                columns = [
-                    Column(name=col.name, type=col.type)
-                    for col in exec_resp.schema.columns
-                ]
-
-            # Check if we got a page in the first response
-            if exec_resp.HasField("page"):
-                first_page = self._parse_first_page(exec_resp, columns)
-
-                if first_page.final:
-                    return first_page, self._empty_pager
-
-                assert self._transport is not None
-                return first_page, self._make_pull_pager(
-                    first_page, columns, self._transport, page_size
+        # Convert params to protobuf Param list
+        param_list = []
+        if params:
+            for k, v in params.items():
+                param_list.append(
+                    Param(name=k, value=self._python_to_proto_value(v))
                 )
 
-            # Need to read next message for data page (schema was first)
-            if hasattr(self._transport, "read_next"):
-                resp = await self._transport.read_next()
-                if resp.HasField("execute"):
-                    exec_resp = resp.execute
-                    if exec_resp.HasField("error"):
-                        raise QueryError(
-                            f"{exec_resp.error.code}: {exec_resp.error.message}"
-                        )
-                    if exec_resp.HasField("page"):
-                        first_page = self._parse_first_page(exec_resp, columns)
+        # Send Execute request (transport lock serializes the send+receive)
+        exec_req = ExecuteRequest(
+            session_id=self._transport.session_id,
+            query=text,
+            params=param_list,
+        )
+        resp = await self._transport.execute(exec_req)
 
-                        if first_page.final:
-                            return first_page, self._empty_pager
+        if not resp.HasField("execute"):
+            raise QueryError("Expected Execute response")
 
-                        assert self._transport is not None
-                        return first_page, self._make_stream_pager(
-                            first_page, columns, self._transport
-                        )
+        exec_resp = resp.execute
 
-            # Empty result
-            first_page = Page(columns=columns, rows=[], ordered=False, final=True)
-            return first_page, self._empty_pager
+        # Check for error
+        if exec_resp.HasField("error"):
+            raise QueryError(f"{exec_resp.error.code}: {exec_resp.error.message}")
+
+        # Parse columns from schema
+        columns: List[Column] = []
+        if exec_resp.HasField("schema"):
+            columns = [
+                Column(name=col.name, type=col.type)
+                for col in exec_resp.schema.columns
+            ]
+
+        # Check if we got a page in the first response
+        if exec_resp.HasField("page"):
+            first_page = self._parse_first_page(exec_resp, columns)
+
+            if first_page.final:
+                return first_page, self._empty_pager
+
+            assert self._transport is not None
+            return first_page, self._make_pull_pager(
+                first_page, columns, self._transport, page_size
+            )
+
+        # Need to read next message for data page (schema was first)
+        if hasattr(self._transport, "read_next"):
+            resp = await self._transport.read_next()
+            if resp.HasField("execute"):
+                exec_resp = resp.execute
+                if exec_resp.HasField("error"):
+                    raise QueryError(
+                        f"{exec_resp.error.code}: {exec_resp.error.message}"
+                    )
+                if exec_resp.HasField("page"):
+                    first_page = self._parse_first_page(exec_resp, columns)
+
+                    if first_page.final:
+                        return first_page, self._empty_pager
+
+                    assert self._transport is not None
+                    return first_page, self._make_stream_pager(
+                        first_page, columns, self._transport
+                    )
+
+        # Empty result
+        first_page = Page(columns=columns, rows=[], ordered=False, final=True)
+        return first_page, self._empty_pager
 
     async def execute(self, text: str, params: Optional[Dict[str, Any]] = None) -> None:
         """
