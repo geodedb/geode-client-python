@@ -572,6 +572,96 @@ class Connection:
             rows.append(row)
         return rows
 
+    @staticmethod
+    async def _empty_pager() -> AsyncIterator[Page]:
+        """Return an async generator that yields nothing."""
+        if False:
+            yield  # pragma: no cover
+
+    def _make_pull_pager(
+        self,
+        first_page: Page,
+        columns: List[Column],
+        transport: Transport,
+        page_size: int,
+    ) -> Callable[[], AsyncIterator[Page]]:
+        """Create a pager that fetches additional pages via pull requests."""
+        conn = self
+
+        async def pager() -> AsyncIterator[Page]:
+            while not first_page.final:
+                pull_req = PullRequest(
+                    session_id=transport.session_id,
+                    page_size=page_size,
+                )
+                resp = await transport.pull(pull_req)
+                if not resp.HasField("pull") or not resp.pull.HasField("response"):
+                    break
+                pull_resp = resp.pull.response
+                if pull_resp.HasField("error"):
+                    break
+                if not pull_resp.HasField("page"):
+                    break
+                rows = conn._parse_proto_rows(pull_resp.page.rows, columns)
+                page = Page(
+                    columns=columns,
+                    rows=rows,
+                    ordered=pull_resp.page.ordered,
+                    final=pull_resp.page.final,
+                )
+                if page.final:
+                    first_page.final = True
+                yield page
+
+        return pager
+
+    def _make_stream_pager(
+        self,
+        first_page: Page,
+        columns: List[Column],
+        transport: Transport,
+    ) -> Callable[[], AsyncIterator[Page]]:
+        """Create a pager that fetches additional pages via read_next (streaming)."""
+        conn = self
+
+        async def pager() -> AsyncIterator[Page]:
+            while not first_page.final:
+                resp = await transport.read_next()
+                if not resp.HasField("execute"):
+                    break
+                exec_resp = resp.execute
+                if exec_resp.HasField("error"):
+                    break
+                if not exec_resp.HasField("page"):
+                    break
+                rows = conn._parse_proto_rows(exec_resp.page.rows, columns)
+                page = Page(
+                    columns=columns,
+                    rows=rows,
+                    ordered=exec_resp.page.ordered,
+                    final=exec_resp.page.final,
+                )
+                if page.final:
+                    first_page.final = True
+                yield page
+
+        return pager
+
+    def _parse_first_page(
+        self,
+        exec_resp: Any,
+        columns: List[Column],
+    ) -> Page:
+        """Parse the first page from an execute response."""
+        rows = self._parse_proto_rows(exec_resp.page.rows, columns)
+        return Page(
+            columns=columns,
+            rows=rows,
+            ordered=exec_resp.page.ordered,
+            order_keys=list(exec_resp.page.order_keys),
+            final=exec_resp.page.final,
+        )
+
     async def query(
         self,
         text: str,
@@ -630,55 +720,14 @@ class Connection:
 
             # Check if we got a page in the first response
             if exec_resp.HasField("page"):
-                rows = self._parse_proto_rows(exec_resp.page.rows, columns)
-                first_page = Page(
-                    columns=columns,
-                    rows=rows,
-                    ordered=exec_resp.page.ordered,
-                    order_keys=list(exec_resp.page.order_keys),
-                    final=exec_resp.page.final,
-                )
+                first_page = self._parse_first_page(exec_resp, columns)
 
                 if first_page.final:
+                    return first_page, self._empty_pager
 
-                    async def empty_pager():
-                        if False:
-                            yield
-
-                    return first_page, empty_pager
-
-                # Create pager for more pages
-                transport = self._transport
-
-                async def pager():
-                    nonlocal first_page
-                    while not first_page.final:
-                        pull_req = PullRequest(
-                            session_id=transport.session_id,
-                            page_size=page_size,
-                        )
-                        resp = await transport.pull(pull_req)
-                        if not resp.HasField("pull") or not resp.pull.HasField(
-                            "response"
-                        ):
-                            break
-                        pull_resp = resp.pull.response
-                        if pull_resp.HasField("error"):
-                            break
-                        if not pull_resp.HasField("page"):
-                            break
-                        rows = self._parse_proto_rows(pull_resp.page.rows, columns)
-                        page = Page(
-                            columns=columns,
-                            rows=rows,
-                            ordered=pull_resp.page.ordered,
-                            final=pull_resp.page.final,
-                        )
-                        if page.final:
-                            first_page.final = True
-                        yield page
-
-                return first_page, pager
+                return first_page, self._make_pull_pager(
+                    first_page, columns, self._transport, page_size
+                )
 
             # Need to read next message for data page (schema was first)
             if hasattr(self._transport, "read_next"):
@@ -690,59 +739,18 @@ class Connection:
                             f"{exec_resp.error.code}: {exec_resp.error.message}"
                         )
                     if exec_resp.HasField("page"):
-                        rows = self._parse_proto_rows(exec_resp.page.rows, columns)
-                        first_page = Page(
-                            columns=columns,
-                            rows=rows,
-                            ordered=exec_resp.page.ordered,
-                            order_keys=list(exec_resp.page.order_keys),
-                            final=exec_resp.page.final,
-                        )
+                        first_page = self._parse_first_page(exec_resp, columns)
 
                         if first_page.final:
+                            return first_page, self._empty_pager
 
-                            async def empty_pager():
-                                if False:
-                                    yield
-
-                            return first_page, empty_pager
-
-                        transport = self._transport
-
-                        async def pager():
-                            nonlocal first_page
-                            while not first_page.final:
-                                resp = await transport.read_next()
-                                if not resp.HasField("execute"):
-                                    break
-                                exec_resp = resp.execute
-                                if exec_resp.HasField("error"):
-                                    break
-                                if not exec_resp.HasField("page"):
-                                    break
-                                rows = self._parse_proto_rows(
-                                    exec_resp.page.rows, columns
-                                )
-                                page = Page(
-                                    columns=columns,
-                                    rows=rows,
-                                    ordered=exec_resp.page.ordered,
-                                    final=exec_resp.page.final,
-                                )
-                                if page.final:
-                                    first_page.final = True
-                                yield page
-
-                        return first_page, pager
+                        return first_page, self._make_stream_pager(
+                            first_page, columns, self._transport
+                        )
 
             # Empty result
             first_page = Page(columns=columns, rows=[], ordered=False, final=True)
-
-            async def empty_pager():
-                if False:
-                    yield
-
-            return first_page, empty_pager
+            return first_page, self._empty_pager
 
     async def execute(self, text: str, params: Optional[Dict[str, Any]] = None) -> None:
         """
