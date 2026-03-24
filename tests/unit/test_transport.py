@@ -415,7 +415,7 @@ class TestQuicTransportUnit:
             port=3141,
         )
         transport = QuicTransport(config)
-        transport._buffer = b""
+        transport._buffer = bytearray()
         assert transport._try_read_from_buffer() is None
 
     def test_try_read_from_buffer_partial_header(self):
@@ -426,7 +426,7 @@ class TestQuicTransportUnit:
             port=3141,
         )
         transport = QuicTransport(config)
-        transport._buffer = b"\x00\x00"  # Only 2 bytes, need 4
+        transport._buffer = bytearray(b"\x00\x00")  # Only 2 bytes, need 4
         assert transport._try_read_from_buffer() is None
 
     def test_try_read_from_buffer_incomplete_body(self):
@@ -463,7 +463,7 @@ class TestQuicTransportUnit:
         )
         transport = QuicTransport(config)
         # Empty protobuf message (0 bytes)
-        transport._buffer = struct.pack(">I", 0)
+        transport._buffer = bytearray(struct.pack(">I", 0))
         result = transport._try_read_from_buffer()
         assert result is not None
 
@@ -503,7 +503,7 @@ class TestQuicTransportUnit:
         )
         transport = QuicTransport(config)
         transport._connected = True
-        transport._buffer = b""
+        transport._buffer = bytearray()
         # Create a queue that never gets data
         transport._reader_queue = asyncio.Queue()
         with pytest.raises(TransportError, match="Timeout reading message"):
@@ -519,7 +519,7 @@ class TestQuicTransportUnit:
         )
         transport = QuicTransport(config)
         transport._connected = True
-        transport._buffer = b""
+        transport._buffer = bytearray()
         transport._reader_queue = asyncio.Queue()
         transport._reader_queue.put_nowait(None)
         with pytest.raises(TransportError, match="Stream closed"):
@@ -535,7 +535,7 @@ class TestQuicTransportUnit:
         )
         transport = QuicTransport(config)
         transport._connected = True
-        transport._buffer = b""
+        transport._buffer = bytearray()
         transport._reader_queue = asyncio.Queue()
         # Send a length prefix that exceeds MAX_MESSAGE_SIZE
         oversized_header = struct.pack(">I", MAX_MESSAGE_SIZE + 1)
@@ -553,7 +553,7 @@ class TestQuicTransportUnit:
         )
         transport = QuicTransport(config)
         transport._connected = True
-        transport._buffer = b""
+        transport._buffer = bytearray()
         transport._reader_queue = asyncio.Queue()
         # Send valid header saying 100 bytes, but no body data
         header = struct.pack(">I", 100)
@@ -571,7 +571,7 @@ class TestQuicTransportUnit:
         )
         transport = QuicTransport(config)
         transport._connected = True
-        transport._buffer = b""
+        transport._buffer = bytearray()
         transport._reader_queue = asyncio.Queue()
         # Send valid header then None (stream closed)
         header = struct.pack(">I", 100)
@@ -590,7 +590,7 @@ class TestQuicTransportUnit:
         )
         transport = QuicTransport(config)
         transport._connected = True
-        transport._buffer = b""
+        transport._buffer = bytearray()
         transport._reader_queue = asyncio.Queue()
         # Empty message (0-length body)
         header = struct.pack(">I", 0)
@@ -622,7 +622,7 @@ class TestQuicTransportUnit:
         transport._protocol = MagicMock()
         transport._connection_cm = MagicMock()
         transport._connection_cm.__aexit__ = AsyncMock()
-        transport._buffer = b"some data"
+        transport._buffer = bytearray(b"some data")
 
         await transport.close()
 
@@ -642,7 +642,7 @@ class TestQuicTransportUnit:
         transport = QuicTransport(config)
         transport._connected = True
         # Put a valid empty message in the buffer
-        transport._buffer = struct.pack(">I", 0)
+        transport._buffer = bytearray(struct.pack(">I", 0))
         result = await transport.read_next()
         assert result is not None
 
@@ -656,7 +656,7 @@ class TestQuicTransportUnit:
         )
         transport = QuicTransport(config)
         transport._connected = True
-        transport._buffer = b""
+        transport._buffer = bytearray()
         transport._reader_queue = asyncio.Queue()
         # Put valid empty message in queue
         transport._reader_queue.put_nowait(struct.pack(">I", 0))

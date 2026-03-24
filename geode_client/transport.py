@@ -290,7 +290,7 @@ class QuicTransport(Transport):
         self._connection_cm = None
         self._reader = None
         self._writer = None
-        self._buffer = b""
+        self._buffer = bytearray()
         self._lock = asyncio.Lock()
         self._session_id = ""
         self._connected = False
@@ -423,7 +423,7 @@ class QuicTransport(Transport):
 
         self._protocol = None
         self._connection_cm = None
-        self._buffer = b""
+        self._buffer = bytearray()
 
     async def _write_message(self, msg: QuicClientMessage) -> None:
         """Write a length-prefixed protobuf message."""
@@ -452,7 +452,7 @@ class QuicTransport(Transport):
                 raise TransportError("Timeout reading message length")
             if data is None:
                 raise TransportError("Stream closed")
-            self._buffer += data
+            self._buffer.extend(data)
 
         msg_len = struct.unpack(">I", self._buffer[:4])[0]
         if msg_len > MAX_MESSAGE_SIZE:
@@ -472,10 +472,10 @@ class QuicTransport(Transport):
                 raise TransportError("Timeout reading message body")
             if data is None:
                 raise TransportError("Stream closed")
-            self._buffer += data
+            self._buffer.extend(data)
 
         msg_data = self._buffer[4:total_needed]
-        self._buffer = self._buffer[total_needed:]
+        del self._buffer[:total_needed]
 
         # Server uses transparent oneof (fd(null)) so decode QuicServerMessage directly
         message = QuicServerMessage()
@@ -499,7 +499,7 @@ class QuicTransport(Transport):
             return None
 
         msg_data = self._buffer[4:total_needed]
-        self._buffer = self._buffer[total_needed:]
+        del self._buffer[:total_needed]
 
         # Server uses transparent oneof (fd(null)) so decode QuicServerMessage directly
         message = QuicServerMessage()
@@ -648,8 +648,10 @@ class GrpcTransport(Transport):
                 server_cert = None
                 cert_cn = None
                 try:
-                    server_cert, cert_cn = self._fetch_server_cert(
-                        self.config.host, self.config.port
+                    server_cert, cert_cn = await asyncio.to_thread(
+                        self._fetch_server_cert,
+                        self.config.host,
+                        self.config.port,
                     )
                 except Exception as e:
                     logger.warning(
