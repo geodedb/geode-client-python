@@ -809,7 +809,12 @@ class Connection:
         queries: List[Tuple[str, Optional[Dict[str, Any]]]],
         stop_on_error: bool = True,
     ) -> List[BatchResult]:
-        """Execute multiple queries in a single batch."""
+        """Execute multiple queries sequentially.
+
+        Each query is a separate request-response round trip. For higher
+        throughput, use a ConnectionPool and execute queries concurrently
+        across multiple connections with asyncio.gather().
+        """
         results = []
 
         for index, (query_text, params) in enumerate(queries):
