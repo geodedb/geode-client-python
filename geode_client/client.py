@@ -684,9 +684,7 @@ class Connection:
         param_list = []
         if params:
             for k, v in params.items():
-                param_list.append(
-                    Param(name=k, value=self._python_to_proto_value(v))
-                )
+                param_list.append(Param(name=k, value=self._python_to_proto_value(v)))
 
         # Send Execute request (transport lock serializes the send+receive)
         exec_req = ExecuteRequest(
@@ -709,8 +707,7 @@ class Connection:
         columns: List[Column] = []
         if exec_resp.HasField("schema"):
             columns = [
-                Column(name=col.name, type=col.type)
-                for col in exec_resp.schema.columns
+                Column(name=col.name, type=col.type) for col in exec_resp.schema.columns
             ]
 
         # Check if we got a page in the first response
