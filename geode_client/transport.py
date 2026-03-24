@@ -8,8 +8,10 @@ Supports:
 
 import abc
 import asyncio
+import logging
 import os
 import struct
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Tuple
@@ -27,6 +29,8 @@ from .proto import (
     QuicServerMessage,
     RollbackRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TransportType(Enum):
@@ -622,8 +626,11 @@ class GrpcTransport(Transport):
                     server_cert, cert_cn = self._fetch_server_cert(
                         self.config.host, self.config.port
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(
+                        "Failed to fetch server cert for skip_verify gRPC: %s",
+                        e,
+                    )
 
                 if server_cert:
                     credentials = grpc.ssl_channel_credentials(
@@ -641,6 +648,13 @@ class GrpcTransport(Transport):
                     )
                 else:
                     # Fallback to insecure if cert fetch fails
+                    warnings.warn(
+                        "gRPC connection falling back to insecure (no TLS) "
+                        "because server certificate could not be fetched. "
+                        "Traffic will be unencrypted.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
                     self._channel = grpc.aio.insecure_channel(target)
             else:
                 # Secure channel with full verification

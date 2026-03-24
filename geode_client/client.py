@@ -10,6 +10,7 @@ Wire format: 4-byte Big Endian length prefix + protobuf message body.
 
 import asyncio
 import logging
+import warnings
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
@@ -336,6 +337,14 @@ class Connection:
         """Establish connection to Geode server using protobuf wire protocol."""
         if self._connected:
             return
+
+        if self.skip_verify:
+            warnings.warn(
+                "TLS certificate verification is disabled (skip_verify=True). "
+                "This is insecure and should only be used for development.",
+                SecurityWarning,
+                stacklevel=2,
+            )
 
         # Create transport config
         config = TransportConfig(
