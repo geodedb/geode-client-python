@@ -725,6 +725,7 @@ class Connection:
                 if first_page.final:
                     return first_page, self._empty_pager
 
+                assert self._transport is not None
                 return first_page, self._make_pull_pager(
                     first_page, columns, self._transport, page_size
                 )
@@ -744,6 +745,7 @@ class Connection:
                         if first_page.final:
                             return first_page, self._empty_pager
 
+                        assert self._transport is not None
                         return first_page, self._make_stream_pager(
                             first_page, columns, self._transport
                         )

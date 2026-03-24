@@ -30,7 +30,7 @@ class QueryBuilder:
         text, params = query.build()
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._clauses: List[tuple[str, str]] = []
         self._params: Dict[str, Any] = {}
 
@@ -169,7 +169,7 @@ class PatternBuilder:
         )
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._elements: List[str] = []
 
     def node(
@@ -326,7 +326,7 @@ class PredicateBuilder:
         )
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._conditions: List[str] = []
 
     def equals(self, left: str, right: str) -> "PredicateBuilder":
