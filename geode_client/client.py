@@ -281,6 +281,7 @@ class Connection:
         password: str = "",
         transport_type: TransportType = TransportType.QUIC,
         tls_enabled: bool = True,
+        graph: str = "",
     ):
         """
         Initialize connection parameters.
@@ -301,6 +302,7 @@ class Connection:
             password: Password for authentication
             transport_type: Transport type (QUIC or GRPC)
             tls_enabled: Enable TLS (default True)
+            graph: Graph name for DSN graph binding
         """
         # Normalize "localhost" to "127.0.0.1"
         self.host = "127.0.0.1" if host == "localhost" else host
@@ -318,6 +320,7 @@ class Connection:
         self.password = password
         self.transport_type = transport_type
         self.tls_enabled = tls_enabled
+        self.graph = graph
 
         # Transport state (serialization handled by transport-level lock)
         self._transport: Optional[Transport] = None
@@ -362,6 +365,7 @@ class Connection:
             hello_name=self.hello_name,
             hello_ver=self.hello_ver,
             conformance=self.conformance,
+            graph=self.graph,
         )
 
         # Create transport
@@ -381,6 +385,7 @@ class Connection:
             client_name=self.hello_name,
             client_version=self.hello_ver,
             wanted_conformance=self.conformance,
+            graph=self.graph if self.graph else None,
         )
 
         try:
@@ -957,6 +962,7 @@ class Client:
             hello_name=config.hello_name,
             hello_ver=config.hello_ver,
             conformance=config.conformance,
+            graph=config.graph,
         )
 
     async def connect(self) -> Connection:

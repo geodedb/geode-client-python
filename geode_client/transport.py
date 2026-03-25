@@ -89,6 +89,7 @@ class TransportConfig:
     hello_name: str = "geode-python"
     hello_ver: str = "0.1.0"
     conformance: str = "min"
+    graph: str = ""  # Graph name for DSN graph binding
 
     def __repr__(self) -> str:
         """Redact password from repr to prevent credential leaks in logs."""
@@ -164,6 +165,10 @@ def parse_dsn(dsn: str) -> TransportConfig:
         port=port,
     )
 
+    # Extract graph from URL path (e.g. quic://host:3141/mygraph)
+    if parsed.path and parsed.path != "/":
+        config.graph = parsed.path.lstrip("/")
+
     if parsed.query:
         params = parse_qs(parsed.query)
 
@@ -193,6 +198,7 @@ def parse_dsn(dsn: str) -> TransportConfig:
             ("hello_name", ("hello_name",), str),
             ("hello_ver", ("hello_ver",), str),
             ("conformance", ("conformance",), str),
+            ("graph", ("graph",), str),
         ]
 
         for field, aliases, converter in _PARAM_MAP:
