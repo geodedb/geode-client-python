@@ -49,6 +49,7 @@ setup(
         "aioquic>=0.9.0",  # QUIC transport
         "protobuf>=6.31.0",  # Protobuf wire format (generated with 6.31.1)
         "grpcio>=1.50.0",  # gRPC transport
+        "pyOpenSSL>=26.0.0",  # CVE-2026-27459 fix
     ],
     extras_require={
         "dev": [
