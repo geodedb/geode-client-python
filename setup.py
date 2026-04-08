@@ -50,6 +50,7 @@ setup(
         "protobuf>=6.31.0",  # Protobuf wire format (generated with 6.31.1)
         "grpcio>=1.50.0",  # gRPC transport
         "pyOpenSSL>=26.0.0",  # CVE-2026-27459 fix
+        "cryptography>=44.0.0",  # CVE fix: DNS name validation
     ],
     extras_require={
         "dev": [
@@ -60,6 +61,8 @@ setup(
             "hypothesis>=6.0.0",
             "mypy>=1.0.0",
             "ruff>=0.1.0",
+            "Pygments>=2.19.0",  # CVE fix: ReDoS
+            "black>=25.0.0",  # CVE fix
             "pre-commit>=3.0.0",
             "commitizen>=3.0.0",
             "grpcio-tools>=1.50.0",  # For protobuf code generation
