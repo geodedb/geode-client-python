@@ -2,7 +2,7 @@
 
 import warnings
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -389,9 +389,7 @@ class TestSavepointInjection:
         transport.read_next = AsyncMock()
         # Mock execute response for savepoint (no-result statement)
         response = MagicMock()
-        response.HasField = MagicMock(
-            side_effect=lambda f: f == "execute"
-        )
+        response.HasField = MagicMock(side_effect=lambda f: f == "execute")
         exec_resp = MagicMock()
         exec_resp.HasField = MagicMock(return_value=False)
         exec_resp.schema.columns = []
@@ -665,19 +663,23 @@ class TestConnectionQuery:
     def _make_exec_response(self, columns=None, rows=None, final=True, has_page=True):
         """Create a mock execute response."""
         resp = MagicMock()
-        resp.HasField = MagicMock(side_effect=lambda f: {
-            "execute": True,
-            "error": False,
-            "schema": columns is not None,
-            "page": has_page,
-        }.get(f, False))
+        resp.HasField = MagicMock(
+            side_effect=lambda f: {
+                "execute": True,
+                "error": False,
+                "schema": columns is not None,
+                "page": has_page,
+            }.get(f, False)
+        )
 
         exec_resp = MagicMock()
-        exec_resp.HasField = MagicMock(side_effect=lambda f: {
-            "error": False,
-            "schema": columns is not None,
-            "page": has_page,
-        }.get(f, False))
+        exec_resp.HasField = MagicMock(
+            side_effect=lambda f: {
+                "error": False,
+                "schema": columns is not None,
+                "page": has_page,
+            }.get(f, False)
+        )
 
         if columns:
             schema_cols = []
@@ -723,6 +725,24 @@ class TestConnectionQuery:
 
         with pytest.raises(QueryError, match="SYNTAX.*bad query"):
             await connected_conn.query("BAD QUERY")
+
+    @pytest.mark.asyncio
+    async def test_query_treats_no_data_error_as_empty_result(self, connected_conn):
+        """Test 02000/no-data responses become empty pages."""
+        resp = MagicMock()
+        resp.HasField = MagicMock(side_effect=lambda f: f == "execute")
+        exec_resp = MagicMock()
+        exec_resp.HasField = MagicMock(side_effect=lambda f: f == "error")
+        exec_resp.error.code = "02000"
+        exec_resp.error.message = "No active result set"
+        resp.execute = exec_resp
+        connected_conn._transport.execute.return_value = resp
+
+        page, pager = await connected_conn.query("MATCH (n:Missing) RETURN n")
+        assert page.final is True
+        assert page.rows == []
+        assert page.columns == []
+        assert pager == connected_conn._empty_pager
 
     @pytest.mark.asyncio
     async def test_query_empty_result(self, connected_conn):
@@ -1086,10 +1106,12 @@ class TestConnectionBatch:
     async def test_batch_all_success(self, connected_conn):
         """Test batch with all queries succeeding."""
         connected_conn._transport.execute.return_value = self._make_success_response()
-        results = await connected_conn.batch([
-            ("RETURN 1", None),
-            ("RETURN 2", None),
-        ])
+        results = await connected_conn.batch(
+            [
+                ("RETURN 1", None),
+                ("RETURN 2", None),
+            ]
+        )
         assert len(results) == 2
         assert all(r.success for r in results)
 
@@ -1100,11 +1122,13 @@ class TestConnectionBatch:
             self._make_success_response(),
             self._make_error_response(),
         ]
-        results = await connected_conn.batch([
-            ("RETURN 1", None),
-            ("BAD QUERY", None),
-            ("RETURN 3", None),
-        ])
+        results = await connected_conn.batch(
+            [
+                ("RETURN 1", None),
+                ("BAD QUERY", None),
+                ("RETURN 3", None),
+            ]
+        )
         assert len(results) == 3
         assert results[0].success is True
         assert results[1].success is False
@@ -1242,6 +1266,8 @@ class TestConnectionExecute:
             if False:
                 yield
 
-        with patch.object(conn, "query", new_callable=AsyncMock, return_value=(mock_page, mock_empty)):
+        with patch.object(
+            conn, "query", new_callable=AsyncMock, return_value=(mock_page, mock_empty)
+        ):
             await conn.execute("CREATE (n:Node)")
             conn.query.assert_called_once_with("CREATE (n:Node)", None, page_size=0)

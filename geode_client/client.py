@@ -627,13 +627,8 @@ class Connection:
 
         async def pager() -> AsyncIterator[Page]:
             while not first_page.final:
-                resp = await transport.read_next()
-                if not resp.HasField("execute"):
-                    break
-                exec_resp = resp.execute
-                if exec_resp.HasField("error"):
-                    break
-                if not exec_resp.HasField("page"):
+                exec_resp = await conn._read_execute_until_page(transport)
+                if exec_resp is None:
                     break
                 rows = conn._parse_proto_rows(exec_resp.page.rows, columns)
                 page = Page(
@@ -647,6 +642,18 @@ class Connection:
                 yield page
 
         return pager
+
+    async def _read_execute_until_page(self, transport: Transport) -> Optional[Any]:
+        """Read execute responses until a page, error, or heartbeat arrives."""
+        while True:
+            resp = await asyncio.wait_for(transport.read_next(), timeout=5.0)
+            if not resp.HasField("execute"):
+                return None
+            exec_resp = resp.execute
+            if exec_resp.HasField("error") or exec_resp.HasField("page"):
+                return exec_resp
+            if exec_resp.HasField("heartbeat"):
+                return None
 
     def _parse_first_page(
         self,
@@ -706,6 +713,8 @@ class Connection:
 
         # Check for error
         if exec_resp.HasField("error"):
+            if self._is_no_data_response(exec_resp):
+                return self._empty_result_page(columns=[]), self._empty_pager
             raise QueryError(f"{exec_resp.error.code}: {exec_resp.error.message}")
 
         # Parse columns from schema
@@ -729,10 +738,12 @@ class Connection:
 
         # Need to read next message for data page (schema was first)
         if hasattr(self._transport, "read_next"):
-            resp = await self._transport.read_next()
-            if resp.HasField("execute"):
-                exec_resp = resp.execute
+            assert self._transport is not None
+            exec_resp = await self._read_execute_until_page(self._transport)
+            if exec_resp is not None:
                 if exec_resp.HasField("error"):
+                    if self._is_no_data_response(exec_resp):
+                        return self._empty_result_page(columns), self._empty_pager
                     raise QueryError(
                         f"{exec_resp.error.code}: {exec_resp.error.message}"
                     )
@@ -748,8 +759,20 @@ class Connection:
                     )
 
         # Empty result
-        first_page = Page(columns=columns, rows=[], ordered=False, final=True)
+        first_page = self._empty_result_page(columns)
         return first_page, self._empty_pager
+
+    def _is_no_data_response(self, exec_resp: Any) -> bool:
+        """Treat 02000 / no-active-result responses as an empty result set."""
+        if not exec_resp.HasField("error"):
+            return False
+        code = (exec_resp.error.code or "").strip()
+        message = (exec_resp.error.message or "").strip().lower()
+        return code == "02000" or message == "no active result set"
+
+    def _empty_result_page(self, columns: List[Column]) -> Page:
+        """Build a canonical empty final page."""
+        return Page(columns=columns, rows=[], ordered=False, final=True)
 
     async def execute(self, text: str, params: Optional[Dict[str, Any]] = None) -> None:
         """

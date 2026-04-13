@@ -346,11 +346,22 @@ class QuicTransport(Transport):
             alpn_protocols=["geode/1"],
         )
 
-        # Always set server_name for SNI (required on aarch64 even with skip_verify)
+        # Always set server_name for SNI. When skip_verify is enabled against
+        # an IP literal, prefer a hostname-like SNI value to match the server's
+        # self-signed certificate expectations.
         if self.config.server_name:
             configuration.server_name = self.config.server_name
         else:
-            configuration.server_name = self.config.host
+            server_name = self.config.host
+            if self.config.skip_verify:
+                try:
+                    import ipaddress
+
+                    ipaddress.ip_address(self.config.host)
+                    server_name = "localhost"
+                except ValueError:
+                    pass
+            configuration.server_name = server_name
 
         if self.config.skip_verify:
             configuration.verify_mode = 0

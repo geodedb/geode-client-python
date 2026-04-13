@@ -33,6 +33,19 @@ _EXTERNAL_PORT = os.environ.get("GEODE_PORT")
 _TRANSPORT = os.environ.get("GEODE_TRANSPORT", "quic").lower()
 
 
+def _get_auth() -> tuple[str, str]:
+    """Return test credentials, preferring the current server bootstrap env var."""
+    username = os.environ.get("GEODE_USERNAME", "geode")
+    password = os.environ.get(
+        "GEODE_PASSWORD",
+        os.environ.get(
+            "GEODE_DEFAULT_PASSWORD",
+            os.environ.get("GEODE_ADMIN_PASSWORD", "GeodeTestPassword123!"),
+        ),
+    )
+    return username, password
+
+
 def _find_available_port() -> int:
     """Find an available UDP port."""
     import socket
@@ -107,6 +120,8 @@ class GeodeContainer:
         # Pull image if needed
         subprocess.run(["docker", "pull", self.image], capture_output=True, timeout=300)
 
+        _, password = _get_auth()
+
         # Start container with UDP port mapping for QUIC and TCP for gRPC
         cmd = [
             "docker",
@@ -114,6 +129,12 @@ class GeodeContainer:
             "-d",
             "--name",
             self.container_name,
+            "-e",
+            f"GEODE_DEFAULT_PASSWORD={password}",
+            "-e",
+            f"GEODE_ADMIN_PASSWORD={password}",
+            "-e",
+            "GEODE_DISABLE_AUDIT=1",
             "-p",
             f"{self.host_port}:{self.container_port}/udp",
             "-p",
@@ -122,7 +143,7 @@ class GeodeContainer:
             "serve",
             "--listen",
             f"0.0.0.0:{self.container_port}",
-            "--grpc-listen",
+            "--listen-grpc",
             "0.0.0.0:50051",
             "--log-level",
             "info",
@@ -248,12 +269,15 @@ def client(geode_host: str, geode_port: int, transport_type: TransportType) -> C
 
     This is a function-scoped fixture so each test gets a fresh client.
     """
+    username, password = _get_auth()
     return Client(
         host=geode_host,
         port=geode_port,
         transport_type=transport_type,
         skip_verify=True,  # Test container uses self-signed certs
         tls_enabled=True,  # Server uses TLS on both QUIC and gRPC
+        username=username,
+        password=password,
     )
 
 
@@ -275,6 +299,7 @@ async def pool(geode_host: str, geode_port: int, transport_type: TransportType):
 
     Automatically closes the pool after the test.
     """
+    username, password = _get_auth()
     pool = ConnectionPool(
         host=geode_host,
         port=geode_port,
@@ -282,6 +307,8 @@ async def pool(geode_host: str, geode_port: int, transport_type: TransportType):
         max_size=5,
         skip_verify=True,
         transport_type=transport_type,
+        username=username,
+        password=password,
     )
     async with pool:
         yield pool

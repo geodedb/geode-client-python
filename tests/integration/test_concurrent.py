@@ -8,16 +8,34 @@ Tests cover:
 """
 
 import asyncio
+import os
 import uuid
 
 import pytest
 
 from geode_client import ConnectionPool
+from geode_client.transport import TransportType
 
 
 def unique_id() -> str:
     """Generate a unique ID for test isolation."""
     return str(uuid.uuid4())[:8]
+
+
+def pool_kwargs(transport_type: TransportType) -> dict:
+    """Build pool config that matches the active integration transport."""
+    return {
+        "skip_verify": True,
+        "transport_type": transport_type,
+        "username": os.environ.get("GEODE_USERNAME", "geode"),
+        "password": os.environ.get(
+            "GEODE_PASSWORD",
+            os.environ.get(
+                "GEODE_DEFAULT_PASSWORD",
+                os.environ.get("GEODE_ADMIN_PASSWORD", "GeodeTestPassword123!"),
+            ),
+        ),
+    }
 
 
 @pytest.mark.asyncio
@@ -104,7 +122,7 @@ async def test_pool_connection_reuse(pool):
 
 
 @pytest.mark.asyncio
-async def test_pool_with_node_operations(geode_host, geode_port):
+async def test_pool_with_node_operations(geode_host, geode_port, transport_type):
     """Test pool with actual database operations."""
     uid = unique_id()
 
@@ -113,7 +131,7 @@ async def test_pool_with_node_operations(geode_host, geode_port):
         port=geode_port,
         min_size=2,
         max_size=5,
-        skip_verify=True,
+        **pool_kwargs(transport_type),
     )
 
     async with pool:
@@ -138,7 +156,7 @@ async def test_pool_with_node_operations(geode_host, geode_port):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_writes(geode_host, geode_port):
+async def test_concurrent_writes(geode_host, geode_port, transport_type):
     """Test concurrent write operations."""
     uid = unique_id()
 
@@ -147,7 +165,7 @@ async def test_concurrent_writes(geode_host, geode_port):
         port=geode_port,
         min_size=3,
         max_size=10,
-        skip_verify=True,
+        **pool_kwargs(transport_type),
     )
 
     async with pool:
@@ -177,7 +195,7 @@ async def test_concurrent_writes(geode_host, geode_port):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_reads(geode_host, geode_port):
+async def test_concurrent_reads(geode_host, geode_port, transport_type):
     """Test concurrent read operations."""
     uid = unique_id()
 
@@ -186,7 +204,7 @@ async def test_concurrent_reads(geode_host, geode_port):
         port=geode_port,
         min_size=3,
         max_size=10,
-        skip_verify=True,
+        **pool_kwargs(transport_type),
     )
 
     async with pool:
@@ -219,14 +237,14 @@ async def test_concurrent_reads(geode_host, geode_port):
 
 
 @pytest.mark.asyncio
-async def test_pool_after_error(geode_host, geode_port):
+async def test_pool_after_error(geode_host, geode_port, transport_type):
     """Test that pool recovers after query error."""
     pool = ConnectionPool(
         host=geode_host,
         port=geode_port,
         min_size=1,
         max_size=3,
-        skip_verify=True,
+        **pool_kwargs(transport_type),
     )
 
     async with pool:
@@ -253,7 +271,7 @@ async def test_many_sequential_queries(client):
 
 
 @pytest.mark.asyncio
-async def test_interleaved_reads_writes(geode_host, geode_port):
+async def test_interleaved_reads_writes(geode_host, geode_port, transport_type):
     """Test interleaved read and write operations."""
     uid = unique_id()
 
@@ -262,7 +280,7 @@ async def test_interleaved_reads_writes(geode_host, geode_port):
         port=geode_port,
         min_size=2,
         max_size=5,
-        skip_verify=True,
+        **pool_kwargs(transport_type),
     )
 
     async with pool:
@@ -287,14 +305,14 @@ async def test_interleaved_reads_writes(geode_host, geode_port):
 
 
 @pytest.mark.asyncio
-async def test_pool_properties(geode_host, geode_port):
+async def test_pool_properties(geode_host, geode_port, transport_type):
     """Test pool property reporting."""
     pool = ConnectionPool(
         host=geode_host,
         port=geode_port,
         min_size=2,
         max_size=5,
-        skip_verify=True,
+        **pool_kwargs(transport_type),
     )
 
     async with pool:
