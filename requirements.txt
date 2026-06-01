@@ -4,7 +4,7 @@ aioquic>=0.9.0,<2.0.0
 protobuf>=6.31.0,<7.0.0
 grpcio>=1.50.0,<2.0.0
 pyOpenSSL>=26.0.0,<27.0.0
-cryptography>=44.0.0,<45.0.0
+cryptography>=46.0.0,<47.0.0
 
 # Development dependencies (with upper bounds)
 pytest>=7.0.0,<9.0.0
@@ -13,4 +13,3 @@ black>=25.0.0,<26.0.0
 Pygments>=2.19.0,<3.0.0
 mypy>=1.0.0,<2.0.0
 ruff>=0.1.0,<1.0.0
-
