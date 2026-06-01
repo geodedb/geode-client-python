@@ -644,6 +644,105 @@ class TestConnectionConnect:
                 await conn.connect()
 
 
+class TestConnectionConnectRetry:
+    """Test Connection.connect() retry/cleanup behavior."""
+
+    @pytest.mark.asyncio
+    async def test_connect_retries_transport_error_then_raises(self):
+        """Transport errors are retried up to CONNECT_RETRY_ATTEMPTS then raise."""
+        from geode_client.client import CONNECT_RETRY_ATTEMPTS
+        from geode_client.transport import TransportConnectionError
+
+        conn = Connection()
+
+        mock_transport = MagicMock()
+        mock_transport.connect = AsyncMock(
+            side_effect=TransportConnectionError("refused", "quic", "127.0.0.1", 3141)
+        )
+        mock_transport.close = AsyncMock()
+
+        created = []
+
+        def make_transport(_config):
+            created.append(mock_transport)
+            return mock_transport
+
+        with patch("geode_client.client.create_transport", side_effect=make_transport):
+            with patch("geode_client.client.asyncio.sleep", new=AsyncMock()):
+                with pytest.raises(GeodeConnectionError):
+                    await conn.connect()
+
+        # A fresh transport is created per attempt.
+        assert len(created) == CONNECT_RETRY_ATTEMPTS
+        assert mock_transport.connect.await_count == CONNECT_RETRY_ATTEMPTS
+        # Cleanup runs after each failed attempt.
+        assert mock_transport.close.await_count == CONNECT_RETRY_ATTEMPTS
+        assert conn._connected is False
+        assert conn._transport is None
+
+    @pytest.mark.asyncio
+    async def test_connect_auth_error_not_retried(self):
+        """AuthError (failed HELLO) is raised immediately after cleanup, no retry."""
+        conn = Connection()
+
+        mock_transport = MagicMock()
+        mock_transport.connect = AsyncMock()
+        mock_transport.close = AsyncMock()
+        hello_resp = MagicMock()
+        hello_resp.success = False
+        hello_resp.error_message = "bad credentials"
+        mock_transport.hello = AsyncMock(return_value=hello_resp)
+
+        with patch("geode_client.client.create_transport", return_value=mock_transport):
+            with pytest.raises(AuthError, match="Authentication failed"):
+                await conn.connect()
+
+        # Exactly one attempt: no retry on auth failure.
+        assert mock_transport.connect.await_count == 1
+        assert mock_transport.hello.await_count == 1
+        # Cleanup still runs (transport reset).
+        assert mock_transport.close.await_count == 1
+        assert conn._connected is False
+        assert conn._transport is None
+
+    @pytest.mark.asyncio
+    async def test_connect_succeeds_on_later_attempt(self):
+        """A transport failure on the first attempt then success returns connected."""
+        from geode_client.transport import TransportConnectionError
+
+        conn = Connection()
+
+        first = MagicMock()
+        first.connect = AsyncMock(
+            side_effect=TransportConnectionError("refused", "quic", "127.0.0.1", 3141)
+        )
+        first.close = AsyncMock()
+
+        second = MagicMock()
+        second.connect = AsyncMock()
+        second.close = AsyncMock()
+        second.session_id = "sess_ok"
+        hello_resp = MagicMock()
+        hello_resp.success = True
+        hello_resp.session_id = "sess_ok"
+        second.hello = AsyncMock(return_value=hello_resp)
+
+        transports = iter([first, second])
+
+        with patch(
+            "geode_client.client.create_transport",
+            side_effect=lambda _config: next(transports),
+        ):
+            with patch("geode_client.client.asyncio.sleep", new=AsyncMock()):
+                await conn.connect()
+
+        assert conn._connected is True
+        assert conn._transport is second
+        # First transport was cleaned up, second was kept.
+        assert first.close.await_count == 1
+        assert second.close.await_count == 0
+
+
 class TestConnectionQuery:
     """Test Connection.query() and related methods with mocked transport."""
 

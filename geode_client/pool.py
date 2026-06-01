@@ -161,11 +161,17 @@ class ConnectionPool:
             except asyncio.QueueEmpty:
                 break
 
-        # Close all connections concurrently
-        await asyncio.gather(
-            *[conn.close() for conn in connections],
-            return_exceptions=True,
-        )
+        # Close pooled connections serially. Concurrent QUIC teardowns can
+        # leave the next pool initialization racing a half-closed transport,
+        # which shows up as intermittent HELLO timeouts in integration tests.
+        for conn in connections:
+            try:
+                await conn.close()
+            except Exception:
+                pass
+            # Give QUIC teardown a brief chance to settle before opening the
+            # next pooled connection in a follow-up test or fixture setup.
+            await asyncio.sleep(0.05)
 
         self._size = 0
         self._initialized = False

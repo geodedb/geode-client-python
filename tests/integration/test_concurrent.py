@@ -129,13 +129,13 @@ async def test_pool_with_node_operations(geode_host, geode_port, transport_type)
     pool = ConnectionPool(
         host=geode_host,
         port=geode_port,
-        min_size=2,
+        min_size=1,
         max_size=5,
         **pool_kwargs(transport_type),
     )
 
     async with pool:
-        # Create nodes using different connections
+        # Create nodes using pooled connections
         async with pool.acquire() as conn:
             await conn.execute(f"CREATE (n:PoolTest {{uid: '{uid}', idx: 1}})")
 

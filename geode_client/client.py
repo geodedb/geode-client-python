@@ -49,6 +49,9 @@ from .types import Value, ValueKind, decode_value
 # Module-level logger - users can configure logging level as needed
 logger = logging.getLogger(__name__)
 
+CONNECT_RETRY_ATTEMPTS = 3
+CONNECT_RETRY_DELAY_SECONDS = 0.05
+
 
 class SecurityWarning(UserWarning):
     """Warning for potential security issues like insecure TLS configuration."""
@@ -335,6 +338,19 @@ class Connection:
         """Async context manager exit."""
         await self.close()
 
+    async def _cleanup_failed_connect(self) -> None:
+        """Reset partially opened transport state after connect/HELLO failures."""
+        self._connected = False
+        if self._transport is None:
+            return
+
+        try:
+            await self._transport.close()
+        except Exception:
+            pass
+        finally:
+            self._transport = None
+
     async def connect(self) -> None:
         """Establish connection to Geode server using protobuf wire protocol."""
         if self._connected:
@@ -368,16 +384,6 @@ class Connection:
             graph=self.graph,
         )
 
-        # Create transport
-        self._transport = create_transport(config)
-
-        try:
-            await self._transport.connect()
-        except TransportConnectionError as e:
-            raise GeodeConnectionError(str(e))
-        except Exception as e:
-            raise GeodeConnectionError(f"Failed to connect: {e}")
-
         # Send HELLO handshake
         hello_req = HelloRequest(
             username=self.username,
@@ -388,16 +394,36 @@ class Connection:
             graph=self.graph if self.graph else None,
         )
 
-        try:
-            response = await self._transport.hello(hello_req)
-            if not response.success:
-                raise AuthError(f"Authentication failed: {response.error_message}")
-        except TransportError as e:
-            raise GeodeConnectionError(f"Handshake failed: {e}")
-        except asyncio.TimeoutError:
-            raise GeodeConnectionError("Timeout waiting for HELLO response")
+        last_error: Optional[Exception] = None
+        for attempt in range(CONNECT_RETRY_ATTEMPTS):
+            self._transport = create_transport(config)
 
-        self._connected = True
+            try:
+                await self._transport.connect()
+                response = await self._transport.hello(hello_req)
+                if not response.success:
+                    raise AuthError(f"Authentication failed: {response.error_message}")
+                self._connected = True
+                return
+            except AuthError:
+                await self._cleanup_failed_connect()
+                raise
+            except TransportConnectionError as e:
+                last_error = GeodeConnectionError(str(e))
+            except TransportError as e:
+                last_error = GeodeConnectionError(f"Handshake failed: {e}")
+            except asyncio.TimeoutError:
+                last_error = GeodeConnectionError("Timeout waiting for HELLO response")
+            except Exception as e:
+                last_error = GeodeConnectionError(f"Failed to connect: {e}")
+
+            await self._cleanup_failed_connect()
+            if attempt + 1 < CONNECT_RETRY_ATTEMPTS:
+                await asyncio.sleep(CONNECT_RETRY_DELAY_SECONDS)
+
+        if last_error is not None:
+            raise last_error
+        raise GeodeConnectionError("Failed to connect")
 
     async def begin(self) -> None:
         """Begin a transaction."""

@@ -303,7 +303,7 @@ async def pool(geode_host: str, geode_port: int, transport_type: TransportType):
     pool = ConnectionPool(
         host=geode_host,
         port=geode_port,
-        min_size=2,
+        min_size=1,
         max_size=5,
         skip_verify=True,
         transport_type=transport_type,

@@ -69,6 +69,10 @@ class UnsupportedSchemeError(TransportError):
 # Maximum protobuf message size (64 MB)
 MAX_MESSAGE_SIZE = 64 * 1024 * 1024
 
+# HELLO handshakes can legitimately take longer than a small inline read,
+# especially against freshly started test servers.
+HANDSHAKE_TIMEOUT = 30.0
+
 
 @dataclass
 class TransportConfig:
@@ -506,8 +510,7 @@ class QuicTransport(Transport):
         async with self._lock:
             msg = QuicClientMessage(hello=request)
             await self._write_message(msg)
-
-            response = await asyncio.wait_for(self._read_message(), timeout=5.0)
+            response = await self._read_message(read_timeout=HANDSHAKE_TIMEOUT)
 
             if response.HasField("hello"):
                 if response.hello.success:
