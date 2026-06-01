@@ -229,6 +229,28 @@ class PreparedStatement:
         return result
 
 
+# ISO/IEC 39075 (GQL) status class constants, mirrored from the Go and
+# Node.js reference clients so predicates can classify server errors.
+STATUS_SUCCESS = "00000"  # Successful completion
+NO_DATA = "02000"  # No data
+STATUS_WARNING = "01000"  # Warning
+STATUS_TRANSACTION_STATE = "25000"  # Invalid transaction state
+STATUS_AUTH = "28000"  # Authorization error
+STATUS_SERIALIZATION = "40001"  # Serialization failure (retryable)
+STATUS_DEADLOCK_DETECTED = "40P01"  # Deadlock detected (retryable)
+STATUS_DEADLOCK = "40502"  # Transaction deadlock (retryable)
+STATUS_SYNTAX = "42000"  # Syntax error
+STATUS_SYSTEM = "58000"  # System error
+# Geode-specific extension: password reset required. Treated as an auth error
+# alongside the standard 28000 class (matches Go IsAuthError).
+GEODE_AUTH_ALT = "08P01"
+
+_AUTH_CODES = frozenset({STATUS_AUTH, GEODE_AUTH_ALT})
+_RETRYABLE_CODES = frozenset(
+    {STATUS_SERIALIZATION, STATUS_DEADLOCK_DETECTED, STATUS_DEADLOCK}
+)
+
+
 class GeodeError(Exception):
     """Base exception for Geode client errors."""
 
@@ -242,15 +264,76 @@ class GeodeConnectionError(GeodeError):
 
 
 class QueryError(GeodeError):
-    """Raised when query execution fails."""
+    """Raised when query execution fails.
 
-    pass
+    Args:
+        *args: Standard exception message arguments.
+        code: The ISO/IEC 39075 (GQL) SQLSTATE status class parsed from the
+            server error response (e.g. ``"28000"``). ``None`` when unknown.
+            Use :func:`is_auth_error`, :func:`is_syntax_error`, and
+            :func:`is_retryable_error` to classify the error.
+    """
+
+    def __init__(self, *args: Any, code: Optional[str] = None) -> None:
+        super().__init__(*args)
+        self.code = code
 
 
 class AuthError(GeodeError):
-    """Raised when authentication fails."""
+    """Raised when authentication fails.
 
-    pass
+    Carries the ``28000`` (authorization) SQLSTATE status class so that
+    :func:`is_auth_error` classifies it consistently with server-side
+    auth errors.
+    """
+
+    def __init__(self, *args: Any, code: Optional[str] = None) -> None:
+        super().__init__(*args)
+        self.code = code if code is not None else STATUS_AUTH
+
+
+def is_auth_error(err: object) -> bool:
+    """Report whether *err* is a Geode authentication/authorization failure.
+
+    Matches the GQL status class ``28000`` or the Geode-specific ``08P01``
+    password-reset extension (mirrors Go ``IsAuthError``). Returns ``False``
+    for ``None`` and for errors that do not carry a SQLSTATE ``code``.
+    """
+    if err is None:
+        return False
+    if isinstance(err, AuthError):
+        return True
+    code = getattr(err, "code", None)
+    return code in _AUTH_CODES
+
+
+def is_syntax_error(err: object) -> bool:
+    """Report whether *err* is a GQL parse/syntax error (status class ``42000``).
+
+    Mirrors Go ``IsSyntaxError``. The Geode engine returns ``42000`` for
+    unrecognised statements, including admin DDL verbs not implemented in the
+    connected server build, so handlers can degrade gracefully.
+    """
+    if err is None:
+        return False
+    return getattr(err, "code", None) == STATUS_SYNTAX
+
+
+def is_retryable_error(err: object) -> bool:
+    """Report whether *err* is safe to retry.
+
+    Retryable conditions (mirrors Go ``IsRetryableError`` and the Node.js
+    ``isRetryableError``):
+
+    - SQLSTATE serialization (``40001``) or deadlock (``40P01`` / ``40502``).
+    - Transport-layer failures (:class:`~geode_client.transport.TransportError`).
+    - Timeouts (:class:`asyncio.TimeoutError` / :class:`TimeoutError`).
+    """
+    if err is None:
+        return False
+    if isinstance(err, (TransportError, TimeoutError, asyncio.TimeoutError)):
+        return True
+    return getattr(err, "code", None) in _RETRYABLE_CODES
 
 
 # Re-export for backwards compatibility
@@ -741,7 +824,10 @@ class Connection:
         if exec_resp.HasField("error"):
             if self._is_no_data_response(exec_resp):
                 return self._empty_result_page(columns=[]), self._empty_pager
-            raise QueryError(f"{exec_resp.error.code}: {exec_resp.error.message}")
+            code = (exec_resp.error.code or "").strip() or None
+            raise QueryError(
+                f"{exec_resp.error.code}: {exec_resp.error.message}", code=code
+            )
 
         # Parse columns from schema
         columns: List[Column] = []
@@ -770,8 +856,10 @@ class Connection:
                 if exec_resp.HasField("error"):
                     if self._is_no_data_response(exec_resp):
                         return self._empty_result_page(columns), self._empty_pager
+                    code = (exec_resp.error.code or "").strip() or None
                     raise QueryError(
-                        f"{exec_resp.error.code}: {exec_resp.error.message}"
+                        f"{exec_resp.error.code}: {exec_resp.error.message}",
+                        code=code,
                     )
                 if exec_resp.HasField("page"):
                     first_page = self._parse_first_page(exec_resp, columns)

@@ -29,6 +29,13 @@ from .auth import (
     User,
 )
 from .client import (
+    GEODE_AUTH_ALT,
+    NO_DATA,
+    STATUS_AUTH,
+    STATUS_DEADLOCK,
+    STATUS_DEADLOCK_DETECTED,
+    STATUS_SERIALIZATION,
+    STATUS_SYNTAX,
     AuthError,
     BatchResult,
     Client,
@@ -44,6 +51,9 @@ from .client import (
     QueryProfile,
     Savepoint,
     SecurityWarning,
+    is_auth_error,
+    is_retryable_error,
+    is_syntax_error,
     open_database,
 )
 from .pool import ConnectionPool, create_pool
@@ -127,6 +137,17 @@ __all__ = [
     "TransportConnectionError",
     "UnsupportedSchemeError",
     "SecurityWarning",
+    # Error classification (SQLSTATE predicates + constants)
+    "is_auth_error",
+    "is_syntax_error",
+    "is_retryable_error",
+    "STATUS_AUTH",
+    "STATUS_SYNTAX",
+    "STATUS_SERIALIZATION",
+    "STATUS_DEADLOCK",
+    "STATUS_DEADLOCK_DETECTED",
+    "GEODE_AUTH_ALT",
+    "NO_DATA",
 ]
 
 __version__ = "0.3.19"

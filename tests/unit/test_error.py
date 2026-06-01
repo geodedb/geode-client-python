@@ -224,3 +224,152 @@ class TestErrorRaising:
         except QueryError as e:
             assert e.__context__ is not None
             assert isinstance(e.__context__, ValueError)
+
+
+class TestQueryErrorCode:
+    """Tests for the SQLSTATE .code attribute on QueryError."""
+
+    def test_code_defaults_to_none(self):
+        """QueryError without a code exposes code=None (backwards compatible)."""
+        err = QueryError("something failed")
+        assert err.code is None
+
+    def test_code_stored_when_provided(self):
+        """QueryError(code=...) stores the SQLSTATE class."""
+        err = QueryError("28000: auth failed", code="28000")
+        assert err.code == "28000"
+        assert str(err) == "28000: auth failed"
+
+    def test_code_keyword_only(self):
+        """code is a keyword argument; positional args are message args."""
+        err = QueryError("oops", code="42000")
+        assert err.args == ("oops",)
+        assert err.code == "42000"
+
+
+class TestSqlStateConstants:
+    """Tests for the exported SQLSTATE status-class constants."""
+
+    def test_constant_values(self):
+        from geode_client import (
+            GEODE_AUTH_ALT,
+            NO_DATA,
+            STATUS_AUTH,
+            STATUS_DEADLOCK,
+            STATUS_SERIALIZATION,
+            STATUS_SYNTAX,
+        )
+
+        assert STATUS_AUTH == "28000"
+        assert STATUS_SYNTAX == "42000"
+        assert STATUS_SERIALIZATION == "40001"
+        assert STATUS_DEADLOCK == "40502"
+        assert GEODE_AUTH_ALT == "08P01"
+        assert NO_DATA == "02000"
+
+
+class TestIsAuthError:
+    """Tests for is_auth_error predicate."""
+
+    def test_28000_is_auth(self):
+        from geode_client import is_auth_error
+
+        assert is_auth_error(QueryError("denied", code="28000")) is True
+
+    def test_08p01_is_auth(self):
+        from geode_client import is_auth_error
+
+        assert is_auth_error(QueryError("reset required", code="08P01")) is True
+
+    def test_dedicated_auth_error_class_is_auth(self):
+        from geode_client import is_auth_error
+
+        assert is_auth_error(AuthError("bad creds")) is True
+
+    def test_non_auth_code_is_false(self):
+        from geode_client import is_auth_error
+
+        assert is_auth_error(QueryError("syntax", code="42000")) is False
+
+    def test_none_is_false(self):
+        from geode_client import is_auth_error
+
+        assert is_auth_error(None) is False
+
+    def test_non_geode_error_is_false(self):
+        from geode_client import is_auth_error
+
+        assert is_auth_error(ValueError("boom")) is False
+
+
+class TestIsSyntaxError:
+    """Tests for is_syntax_error predicate."""
+
+    def test_42000_is_syntax(self):
+        from geode_client import is_syntax_error
+
+        assert is_syntax_error(QueryError("bad token", code="42000")) is True
+
+    def test_other_code_is_false(self):
+        from geode_client import is_syntax_error
+
+        assert is_syntax_error(QueryError("denied", code="28000")) is False
+
+    def test_none_is_false(self):
+        from geode_client import is_syntax_error
+
+        assert is_syntax_error(None) is False
+
+    def test_no_code_is_false(self):
+        from geode_client import is_syntax_error
+
+        assert is_syntax_error(QueryError("no code")) is False
+
+
+class TestIsRetryableError:
+    """Tests for is_retryable_error predicate."""
+
+    def test_serialization_40001_is_retryable(self):
+        from geode_client import is_retryable_error
+
+        assert is_retryable_error(QueryError("conflict", code="40001")) is True
+
+    def test_deadlock_40502_is_retryable(self):
+        from geode_client import is_retryable_error
+
+        assert is_retryable_error(QueryError("deadlock", code="40502")) is True
+
+    def test_40p01_is_retryable(self):
+        from geode_client import is_retryable_error
+
+        assert is_retryable_error(QueryError("deadlock detected", code="40P01")) is True
+
+    def test_transport_error_is_retryable(self):
+        from geode_client import TransportError, is_retryable_error
+
+        assert is_retryable_error(TransportError("connection dropped")) is True
+
+    def test_timeout_error_is_retryable(self):
+        from geode_client import is_retryable_error
+
+        assert is_retryable_error(TimeoutError("timed out")) is True
+
+    def test_syntax_error_is_not_retryable(self):
+        from geode_client import is_retryable_error
+
+        assert is_retryable_error(QueryError("bad token", code="42000")) is False
+
+    def test_auth_error_is_not_retryable(self):
+        from geode_client import is_retryable_error
+
+        assert is_retryable_error(QueryError("denied", code="28000")) is False
+
+    def test_none_is_false(self):
+        from geode_client import is_retryable_error
+
+        assert is_retryable_error(None) is False
+
+    def test_plain_error_is_false(self):
+        from geode_client import is_retryable_error
+
+        assert is_retryable_error(ValueError("boom")) is False
