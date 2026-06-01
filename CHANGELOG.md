@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21] - 2026-06-01
+
+### Added
+- Typed error classification mirroring the Go and Node.js clients:
+  `is_auth_error`, `is_syntax_error`, and `is_retryable_error` predicates plus
+  ISO/IEC 39075 (GQL) SQLSTATE status-class constants (`STATUS_AUTH`,
+  `STATUS_SYNTAX`, `STATUS_SERIALIZATION`, `STATUS_DEADLOCK`,
+  `STATUS_DEADLOCK_DETECTED`, `GEODE_AUTH_ALT`, `NO_DATA`).
+- `QueryError.code` exposes the SQLSTATE status class parsed from the server
+  error response (`None` when unknown); `AuthError.code` defaults to `28000`.
+
+### Fixed
+- Connection establishment now retries transport/HELLO failures up to three
+  attempts (auth failures are not retried) with partial-transport cleanup
+  between attempts.
+- Connection pool teardown closes pooled connections serially with a brief
+  settle delay to avoid intermittent HELLO timeouts in concurrent workloads.
+- HELLO handshake read timeout raised to 30s for slow/cold-start servers.
+- Single-source the package version; `__version__` and `setup.py` are now kept
+  in lockstep and guarded by a unit test.
+
 ## [0.3.19] - 2026-03-24
 
 ### Fixed
