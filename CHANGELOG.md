@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Multi-tenancy + FLE support on the HELLO handshake (GAP-0841): `Connection`
+  and `Client.from_url` now accept `tenant` (sent as `HelloRequest.tenant_id`)
+  and `role` (sent as `HelloRequest.role`). Both are also parsable from the DSN
+  query string (`?tenant=…&role=…`, with `tenant_id` accepted as an alias) and
+  are only sent when non-empty. The vendored `proto/geode.proto` was resynced to
+  add `HelloRequest.role = 8` and the generated `_pb2`/`_pb2.pyi` regenerated.
+
 ## [0.3.21] - 2026-06-01
 
 ### Added

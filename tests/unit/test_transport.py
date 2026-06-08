@@ -2,7 +2,7 @@
 
 import asyncio
 import struct
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -122,6 +122,23 @@ class TestDsnParsing:
         assert config.ca_cert == "/path/to/ca.crt"
         assert config.client_cert == "/path/to/client.crt"
         assert config.client_key == "/path/to/client.key"
+
+    def test_query_params_tenant_and_role(self):
+        """GAP-0841: tenant + role parse from the DSN query string."""
+        config = parse_dsn("quic://localhost:3141?tenant=acme&role=analyst")
+        assert config.tenant == "acme"
+        assert config.role == "analyst"
+
+    def test_query_params_tenant_id_alias(self):
+        """GAP-0841: tenant_id is accepted as an alias for tenant."""
+        config = parse_dsn("quic://localhost:3141?tenant_id=acme")
+        assert config.tenant == "acme"
+
+    def test_tenant_and_role_default_empty(self):
+        """GAP-0841: tenant + role default to empty when not in the DSN."""
+        config = parse_dsn("quic://localhost:3141")
+        assert config.tenant == ""
+        assert config.role == ""
 
     def test_invalid_scheme_http(self):
         """Test that http:// scheme raises error."""

@@ -126,7 +126,7 @@ class QuicServerMessage(_message.Message):
     def __init__(self, hello: _Optional[_Union[HelloResponse, _Mapping]] = ..., execute: _Optional[_Union[ExecutionResponse, _Mapping]] = ..., pull: _Optional[_Union[PullResponse, _Mapping]] = ..., ping: _Optional[_Union[PingResponse, _Mapping]] = ..., cdc_diag: _Optional[_Union[CdcDiagnosticsResponse, _Mapping]] = ..., cdc_ctrl: _Optional[_Union[CdcControlResponse, _Mapping]] = ..., begin: _Optional[_Union[BeginResponse, _Mapping]] = ..., commit: _Optional[_Union[CommitResponse, _Mapping]] = ..., rollback: _Optional[_Union[RollbackResponse, _Mapping]] = ..., savepoint: _Optional[_Union[SavepointResponse, _Mapping]] = ..., rollback_to: _Optional[_Union[RollbackToResponse, _Mapping]] = ..., backup: _Optional[_Union[BackupResponse, _Mapping]] = ..., restore: _Optional[_Union[RestoreResponse, _Mapping]] = ..., upload_backup: _Optional[_Union[UploadBackupResponse, _Mapping]] = ...) -> None: ...
 
 class HelloRequest(_message.Message):
-    __slots__ = ("username", "password", "tenant_id", "client_name", "client_version", "wanted_conformance", "graph")
+    __slots__ = ("username", "password", "tenant_id", "client_name", "client_version", "wanted_conformance", "graph", "role")
     USERNAME_FIELD_NUMBER: _ClassVar[int]
     PASSWORD_FIELD_NUMBER: _ClassVar[int]
     TENANT_ID_FIELD_NUMBER: _ClassVar[int]
@@ -134,6 +134,7 @@ class HelloRequest(_message.Message):
     CLIENT_VERSION_FIELD_NUMBER: _ClassVar[int]
     WANTED_CONFORMANCE_FIELD_NUMBER: _ClassVar[int]
     GRAPH_FIELD_NUMBER: _ClassVar[int]
+    ROLE_FIELD_NUMBER: _ClassVar[int]
     username: str
     password: str
     tenant_id: str
@@ -141,7 +142,8 @@ class HelloRequest(_message.Message):
     client_version: str
     wanted_conformance: str
     graph: str
-    def __init__(self, username: _Optional[str] = ..., password: _Optional[str] = ..., tenant_id: _Optional[str] = ..., client_name: _Optional[str] = ..., client_version: _Optional[str] = ..., wanted_conformance: _Optional[str] = ..., graph: _Optional[str] = ...) -> None: ...
+    role: str
+    def __init__(self, username: _Optional[str] = ..., password: _Optional[str] = ..., tenant_id: _Optional[str] = ..., client_name: _Optional[str] = ..., client_version: _Optional[str] = ..., wanted_conformance: _Optional[str] = ..., graph: _Optional[str] = ..., role: _Optional[str] = ...) -> None: ...
 
 class HelloResponse(_message.Message):
     __slots__ = ("success", "session_id", "error_message", "capabilities", "password_reset_required", "graph")

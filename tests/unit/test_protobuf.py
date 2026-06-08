@@ -32,6 +32,57 @@ class TestProtobufRoundtrip:
         assert restored.client_version == original.client_version
         assert restored.wanted_conformance == original.wanted_conformance
 
+    def test_hello_request_has_tenant_id_and_role_fields(self):
+        """GAP-0841: HelloRequest carries tenant_id (field 3) and role (field 8).
+
+        These optional fields enable multi-tenant isolation (tenant_id) and
+        FLE field-level access control (role) from the Python client.
+        """
+        from geode_client.proto import HelloRequest
+
+        fields = HelloRequest.DESCRIPTOR.fields_by_name
+        assert "tenant_id" in fields, "HelloRequest missing tenant_id field"
+        assert fields["tenant_id"].number == 3
+        assert "role" in fields, "HelloRequest missing role field (GAP-0841)"
+        assert fields["role"].number == 8
+
+        # Both are proto3 `optional`, so they have explicit presence.
+        assert fields["tenant_id"].has_presence
+        assert fields["role"].has_presence
+
+    def test_hello_request_tenant_role_roundtrip(self):
+        """GAP-0841: tenant_id + role survive a serialization roundtrip."""
+        from geode_client.proto import HelloRequest
+
+        original = HelloRequest(
+            username="testuser",
+            password="testpass",
+            client_name="test-client",
+            client_version="1.0.0",
+            wanted_conformance="min",
+            tenant_id="acme",
+            role="analyst",
+        )
+
+        restored = HelloRequest()
+        restored.ParseFromString(original.SerializeToString())
+
+        assert restored.HasField("tenant_id")
+        assert restored.tenant_id == "acme"
+        assert restored.HasField("role")
+        assert restored.role == "analyst"
+
+    def test_hello_request_tenant_role_optional_presence(self):
+        """GAP-0841: unset tenant_id/role are not serialized (optional presence)."""
+        from geode_client.proto import HelloRequest
+
+        original = HelloRequest(username="u", password="p")
+        restored = HelloRequest()
+        restored.ParseFromString(original.SerializeToString())
+
+        assert not restored.HasField("tenant_id")
+        assert not restored.HasField("role")
+
     def test_execute_request_roundtrip(self):
         """Test ExecuteRequest serialization/deserialization."""
         from geode_client.proto import (
@@ -319,6 +370,57 @@ class TestJsonRemovalGuard:
 
         assert geode_pb2 is not None
         assert geode_pb2_grpc is not None
+
+
+class TestProtoDrift:
+    """GAP-0841: guard the vendored proto against the canonical server proto."""
+
+    def _repo_root(self) -> Path:
+        # tests/unit/test_protobuf.py -> repo root is two parents up.
+        return Path(__file__).resolve().parents[2]
+
+    def test_vendored_proto_declares_role_field(self):
+        """The vendored proto/geode.proto must declare HelloRequest.role = 8."""
+        proto_path = self._repo_root() / "proto" / "geode.proto"
+        text = proto_path.read_text()
+
+        # Isolate the HelloRequest message body.
+        start = text.index("message HelloRequest")
+        body = text[start : text.index("}", start)]
+        assert "tenant_id = 3" in body, "vendored HelloRequest missing tenant_id = 3"
+        assert "role = 8" in body, "vendored HelloRequest missing role = 8 (GAP-0841)"
+
+    def test_vendored_hello_request_matches_canonical(self):
+        """If the canonical server proto is reachable, HelloRequest fields match.
+
+        Detects drift between the vendored proto and the server source. Skips
+        when the sibling geode server checkout is not present (e.g. in CI that
+        only clones the client repo).
+        """
+        canonical = self._repo_root().parent / "geode" / "src" / "proto" / "geode.proto"
+        if not canonical.exists():
+            import pytest
+
+            pytest.skip(f"canonical server proto not found at {canonical}")
+
+        def hello_fields(text: str) -> set[str]:
+            start = text.index("message HelloRequest")
+            body = text[start : text.index("}", start)]
+            fields = set()
+            for line in body.splitlines():
+                line = line.split("//")[0].strip().rstrip(";")
+                if "=" in line and line:
+                    # e.g. "optional string role = 8" -> ("name", "number")
+                    decl, num = line.rsplit("=", 1)
+                    name = decl.split()[-1]
+                    fields.add(f"{name}={num.strip()}")
+            return fields
+
+        vendored = (self._repo_root() / "proto" / "geode.proto").read_text()
+        server = canonical.read_text()
+        assert hello_fields(vendored) == hello_fields(
+            server
+        ), "vendored HelloRequest has drifted from the canonical server proto"
 
 
 class TestGrpcServiceStub:

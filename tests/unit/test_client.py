@@ -301,6 +301,63 @@ class TestConnection:
         conn = Connection(transport_type=TransportType.GRPC)
         assert conn.transport_type == TransportType.GRPC
 
+    def test_init_tenant_and_role(self):
+        """GAP-0841: Connection stores tenant + role; default empty."""
+        conn = Connection(tenant="acme", role="analyst")
+        assert conn.tenant == "acme"
+        assert conn.role == "analyst"
+
+        default = Connection()
+        assert default.tenant == ""
+        assert default.role == ""
+
+
+class TestConnectHelloHandshake:
+    """GAP-0841: connect() forwards tenant_id + role on the HELLO handshake."""
+
+    async def _captured_hello(self, **conn_kwargs):
+        """Run Connection.connect() with a mocked transport, capture HelloRequest."""
+        captured = {}
+
+        mock_transport = MagicMock()
+        mock_transport.session_id = "sess_123"
+        mock_transport.connect = AsyncMock()
+        mock_transport.close = AsyncMock()
+
+        async def fake_hello(request):
+            captured["request"] = request
+            resp = MagicMock()
+            resp.success = True
+            resp.session_id = "sess_123"
+            resp.error_message = ""
+            return resp
+
+        mock_transport.hello = AsyncMock(side_effect=fake_hello)
+
+        with patch("geode_client.client.create_transport", return_value=mock_transport):
+            conn = Connection(**conn_kwargs)
+            await conn.connect()
+
+        return captured["request"]
+
+    @pytest.mark.asyncio
+    async def test_connect_forwards_tenant_and_role(self):
+        """tenant + role are populated on the HelloRequest when provided."""
+        request = await self._captured_hello(
+            username="u", password="p", tenant="acme", role="analyst"
+        )
+        assert request.HasField("tenant_id")
+        assert request.tenant_id == "acme"
+        assert request.HasField("role")
+        assert request.role == "analyst"
+
+    @pytest.mark.asyncio
+    async def test_connect_omits_tenant_and_role_when_unset(self):
+        """tenant_id + role are left unset on the HelloRequest when not provided."""
+        request = await self._captured_hello(username="u", password="p")
+        assert not request.HasField("tenant_id")
+        assert not request.HasField("role")
+
 
 class TestConnectionTransport:
     """Test Connection with mocked transport."""
