@@ -15,7 +15,7 @@ import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Tuple
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .proto import (
     BeginRequest,
@@ -122,6 +122,10 @@ def parse_dsn(dsn: str) -> TransportConfig:
     - grpc://host:port?options
     - host:port?options (defaults to QUIC)
 
+    Credentials may be supplied in the userinfo segment
+    (quic://user:pass@host:port); percent-encoded values are decoded. The
+    username/password query parameters below override userinfo credentials.
+
     Query parameters:
     - tls: 0/1/true/false (default: true, gRPC only)
     - insecure/skip_verify/insecure_skip_verify: skip TLS verification (default: false)
@@ -172,6 +176,15 @@ def parse_dsn(dsn: str) -> TransportConfig:
         host=host,
         port=port,
     )
+
+    # Extract credentials from the userinfo segment (user:pass@host). Matches
+    # the Go reference and round-trips with format_dsn, which embeds creds here.
+    # urlparse does not percent-decode userinfo, so decode it explicitly.
+    # Query-param credentials (parsed below) intentionally override these.
+    if parsed.username:
+        config.username = unquote(parsed.username)
+    if parsed.password is not None:
+        config.password = unquote(parsed.password)
 
     # Extract graph from URL path (e.g. quic://host:3141/mygraph)
     if parsed.path and parsed.path != "/":

@@ -81,6 +81,37 @@ class TestFormatDSN:
         assert "[::1]:3141" in out
 
 
+class TestParseUserinfo:
+    """parse_dsn must read credentials from the user:pass@ authority segment."""
+
+    def test_reads_user_and_password(self):
+        cfg = parse_dsn("quic://alice:s3cr3t@127.0.0.1:3141")
+        assert cfg.username == "alice"
+        assert cfg.password == "s3cr3t"
+
+    def test_reads_username_only(self):
+        cfg = parse_dsn("quic://alice@127.0.0.1:3141")
+        assert cfg.username == "alice"
+        assert cfg.password == ""
+
+    def test_percent_decodes_userinfo(self):
+        # '@' -> %40, ':' -> %3A so they survive the authority delimiters
+        cfg = parse_dsn("quic://al%40ice:p%3Ass@127.0.0.1:3141")
+        assert cfg.username == "al@ice"
+        assert cfg.password == "p:ss"
+
+    def test_query_param_overrides_userinfo(self):
+        # Matches the Go reference: query params override userinfo credentials.
+        cfg = parse_dsn("quic://alice:s3cr3t@127.0.0.1:3141?user=bob&pass=other")
+        assert cfg.username == "bob"
+        assert cfg.password == "other"
+
+    def test_no_userinfo_leaves_credentials_unset(self):
+        cfg = parse_dsn("quic://127.0.0.1:3141")
+        assert cfg.username == ""
+        assert cfg.password == ""
+
+
 class TestRoundTrip:
     def test_parse_format_parse(self):
         original = (
