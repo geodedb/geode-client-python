@@ -28,6 +28,11 @@ from .auth import (
     SessionInfo,
     User,
 )
+from .batch import (
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_MAX_WORKERS,
+    Statement,
+)
 from .client import (
     AuthError,
     BatchResult,
@@ -53,6 +58,7 @@ from .query_builder import (
     PredicateBuilder,
     QueryBuilder,
 )
+from .schema import parse_schema_fs
 from .transport import (
     GrpcTransport,
     QuicTransport,
@@ -83,6 +89,11 @@ __all__ = [
     "Value",
     "ValueKind",
     "Range",
+    # Batch / schema
+    "Statement",
+    "DEFAULT_CHUNK_SIZE",
+    "DEFAULT_MAX_WORKERS",
+    "parse_schema_fs",
     # Query building
     "QueryBuilder",
     "PatternBuilder",
