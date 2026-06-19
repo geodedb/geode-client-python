@@ -85,6 +85,7 @@ from .transport import (
     TransportType,
     UnsupportedSchemeError,
     create_transport,
+    format_dsn,
     parse_dsn,
     redact_dsn,
 )
@@ -155,6 +156,7 @@ __all__ = [
     "QuicTransport",
     "GrpcTransport",
     "create_transport",
+    "format_dsn",
     "parse_dsn",
     "redact_dsn",
     # Validation

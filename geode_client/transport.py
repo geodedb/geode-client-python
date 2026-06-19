@@ -69,6 +69,12 @@ class UnsupportedSchemeError(TransportError):
 # Maximum protobuf message size (64 MB)
 MAX_MESSAGE_SIZE = 64 * 1024 * 1024
 
+# Defaults used to decide which params format_dsn emits (parity with Go FormatDSN).
+_DEFAULT_PAGE_SIZE = 1000
+_DEFAULT_HELLO_NAME = "geode-python"
+_DEFAULT_HELLO_VER = "0.1.0"
+_DEFAULT_CONFORMANCE = "min"
+
 
 @dataclass
 class TransportConfig:
@@ -271,6 +277,67 @@ def redact_dsn(dsn: str) -> str:
     if sep:
         return base + "?" + _redact_query_params(query)
     return base
+
+
+def _format_host_port(host: str, port: int) -> str:
+    """Join host and port, bracketing IPv6 literals."""
+    if ":" in host and not host.startswith("["):
+        return f"[{host}]:{port}"
+    return f"{host}:{port}"
+
+
+def format_dsn(config: "TransportConfig") -> str:
+    """Serialise ``config`` back into a DSN string (inverse of parse_dsn).
+
+    Only non-default values are emitted as query parameters. Credentials are
+    embedded in the userinfo segment (scheme://user:pass@host:port); a
+    password without a username is emitted as a ``pass`` query parameter.
+    """
+    from urllib.parse import quote, urlencode
+
+    scheme = config.transport_type.value
+    host_port = _format_host_port(config.host, config.port)
+
+    params: list[tuple[str, str]] = []
+    if config.page_size and config.page_size != _DEFAULT_PAGE_SIZE:
+        params.append(("page_size", str(config.page_size)))
+    if config.hello_name and config.hello_name != _DEFAULT_HELLO_NAME:
+        params.append(("hello_name", config.hello_name))
+    if config.hello_ver and config.hello_ver != _DEFAULT_HELLO_VER:
+        params.append(("hello_ver", config.hello_ver))
+    if config.conformance and config.conformance != _DEFAULT_CONFORMANCE:
+        params.append(("conformance", config.conformance))
+    if config.ca_cert:
+        params.append(("ca", config.ca_cert))
+    if config.client_cert:
+        params.append(("cert", config.client_cert))
+    if config.client_key:
+        params.append(("key", config.client_key))
+    if config.skip_verify:
+        params.append(("insecure_tls_skip_verify", "true"))
+    if not config.tls_enabled:
+        params.append(("tls", "0"))
+    if config.graph:
+        params.append(("graph", config.graph))
+    if config.tenant:
+        params.append(("tenant", config.tenant))
+    if config.role:
+        params.append(("role", config.role))
+
+    userinfo = ""
+    if config.username and config.password:
+        userinfo = (
+            f"{quote(config.username, safe='')}:{quote(config.password, safe='')}@"
+        )
+    elif config.username:
+        userinfo = f"{quote(config.username, safe='')}@"
+    elif config.password:
+        params.append(("pass", config.password))
+
+    dsn = f"{scheme}://{userinfo}{host_port}"
+    if params:
+        dsn += "?" + urlencode(params)
+    return dsn
 
 
 class Transport(abc.ABC):
