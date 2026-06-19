@@ -86,10 +86,16 @@ geode-client-python/
 │   │   ├── __init__.py     # Protobuf message exports
 │   │   ├── geode_pb2.py    # Generated protobuf messages
 │   │   └── geode_pb2_grpc.py # Generated gRPC stubs
-│   ├── types.py            # Value type system (26 types)
+│   ├── types.py            # Value type system + Node/Edge/Path typed values
 │   ├── query_builder.py    # QueryBuilder, PatternBuilder, PredicateBuilder
-│   ├── pool.py             # ConnectionPool for concurrent workloads
+│   ├── pool.py             # ConnectionPool + create_pool_from_dsn factory
 │   ├── auth.py             # AuthClient for RBAC/RLS
+│   ├── errors.py           # DriverError, NoRowsError, status classifiers
+│   ├── retry.py            # RetryPolicy + async retry helper
+│   ├── batch.py            # Statement + chunking for batch/pipeline exec
+│   ├── schema.py           # parse_schema_fs (read .gql schema files)
+│   ├── crypto.py           # AES-256-GCM field-level encryption (Cipher)
+│   ├── quote.py            # quote_ident/quote_string/sanitize_graph_name
 │   └── validate.py         # Input validation functions
 ├── proto/                  # Canonical protobuf schema
 │   └── geode.proto         # Synced from server
@@ -237,6 +243,44 @@ Input validation:
 - `dsn_url()` - Validate connection URLs
 - `identifier()`, `label()`, `property_name()` - Validate GQL identifiers
 - `timeout()`, `pool_size()` - Validate numeric configurations
+
+### geode_client/errors.py
+
+Server error types and classifiers (mirrors Go `errors.go`):
+
+- **`DriverError`**: Carries `code`, `status_class` (ISO/IEC 39075), `message`; `.is_retryable()` (true for 40001/40502)
+- **`NoRowsError`**: Raised by `Connection.query_row`/`fetch_one` when the result set is empty
+- `is_auth_error()` (28000/08P01), `is_syntax_error()` (42000), `is_retryable_error()`
+
+### geode_client/retry.py
+
+Retry policy and async retry (mirrors Go `retry.go`):
+
+- **`RetryPolicy`**: `max_attempts=3`, `initial_backoff=1.0`, `max_backoff=30.0`, `multiplier=2.0`; `.backoff(attempt)`
+- `default_retry_policy()`, `retry(fn, policy)` - retries only retryable errors
+
+### geode_client/batch.py & schema.py
+
+Batch/pipeline execution and schema loading (mirrors Go `batch.go`/`schema.go`):
+
+- **`Statement`**: `{query, params}` pairing for `Connection.batch_exec`/`pipeline_exec`
+- `DEFAULT_CHUNK_SIZE=100`, `DEFAULT_MAX_WORKERS=8`
+- `parse_schema_fs(path)` - reads `*.gql` files, returns `list[Statement]`
+
+### geode_client/crypto.py
+
+Field-level encryption (mirrors Go `crypto/cipher.go`):
+
+- **`Cipher(master_key)`**: AES-256-GCM with HKDF-SHA256-derived keys
+  - `.encrypt()`/`.decrypt()`, `.encrypt_string()`/`.decrypt_string()` (base64), `.hmac_hex()`
+- **`CryptoError`**: Raised on key/cipher failures
+
+### geode_client/quote.py
+
+GQL quoting/escaping helpers (mirrors Go `quote.go`):
+
+- `quote_ident()`, `quote_string()`, `sanitize_graph_name()`
+- **`InvalidIdentifierError`**, **`InvalidStringError`**
 
 ## Wire Protocol Reference
 

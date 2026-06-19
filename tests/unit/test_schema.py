@@ -50,8 +50,13 @@ class TestParseSchemaFS:
         assert all("ignored" not in s.query for s in stmts)
 
     def test_does_not_traverse_subdirs(self, schema_dir):
+        # The fixture places a valid GQL statement in sub/03_more.gql; if the
+        # directory guard were removed it would be parsed and appear here.
         stmts = parse_schema_fs(schema_dir)
-        assert all("ignored" not in s.query for s in stmts)
+        queries = [s.query for s in stmts]
+        assert "CREATE (ignored)" not in queries
+        # Exactly the four top-level statements should be returned.
+        assert len(stmts) == 4
 
     def test_semicolon_split_multiple_per_line(self, tmp_path):
         (tmp_path / "x.gql").write_text("CREATE (a); CREATE (b);")
