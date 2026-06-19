@@ -14,7 +14,10 @@ import warnings
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .batch import Statement
 
 from . import validate
 from .proto import (
@@ -903,7 +906,7 @@ class Connection:
 
         return results
 
-    async def _batch_exec_tx(self, statements: "List[Any]") -> None:
+    async def _batch_exec_tx(self, statements: "List[Statement]") -> None:
         """Run all statements inside a single transaction (no retry)."""
         await self.begin()
         try:
@@ -917,7 +920,7 @@ class Connection:
             raise
         await self.commit()
 
-    async def batch_exec(self, statements: "List[Any]") -> None:
+    async def batch_exec(self, statements: "List[Statement]") -> None:
         """Execute statements in a single transaction with automatic retry.
 
         Mirrors Go Pool.BatchExec: a single transaction pins the connection
@@ -936,7 +939,7 @@ class Connection:
 
     async def pipeline_exec(
         self,
-        statements: "List[Any]",
+        statements: "List[Statement]",
         chunk_size: int = 0,
         max_workers: int = 0,
     ) -> None:
@@ -966,7 +969,7 @@ class Connection:
         first_error: List[BaseException] = []
         tasks: List[asyncio.Task] = []
 
-        async def run_chunk(chunk: "List[Any]") -> None:
+        async def run_chunk(chunk: "List[Statement]") -> None:
             async with sem:
                 if first_error:
                     return
@@ -986,7 +989,7 @@ class Connection:
             await asyncio.sleep(0)
 
         if tasks:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         if first_error:
             raise first_error[0]
