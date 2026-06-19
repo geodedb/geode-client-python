@@ -282,6 +282,8 @@ class Connection:
         transport_type: TransportType = TransportType.QUIC,
         tls_enabled: bool = True,
         graph: str = "",
+        tenant: str = "",
+        role: str = "",
     ):
         """
         Initialize connection parameters.
@@ -303,6 +305,8 @@ class Connection:
             transport_type: Transport type (QUIC or GRPC)
             tls_enabled: Enable TLS (default True)
             graph: Graph name for DSN graph binding
+            tenant: Tenant identifier sent in HELLO (tenant_id)
+            role: FLE role sent in HELLO for field-level access control
         """
         # Normalize "localhost" to "127.0.0.1"
         self.host = "127.0.0.1" if host == "localhost" else host
@@ -321,6 +325,8 @@ class Connection:
         self.transport_type = transport_type
         self.tls_enabled = tls_enabled
         self.graph = graph
+        self.tenant = tenant
+        self.role = role
 
         # Transport state (serialization handled by transport-level lock)
         self._transport: Optional[Transport] = None
@@ -366,6 +372,8 @@ class Connection:
             hello_ver=self.hello_ver,
             conformance=self.conformance,
             graph=self.graph,
+            tenant=self.tenant,
+            role=self.role,
         )
 
         # Create transport
@@ -386,6 +394,8 @@ class Connection:
             client_version=self.hello_ver,
             wanted_conformance=self.conformance,
             graph=self.graph if self.graph else None,
+            tenant_id=self.tenant if self.tenant else None,
+            role=self.role if self.role else None,
         )
 
         try:
@@ -963,6 +973,8 @@ class Client:
             hello_ver=config.hello_ver,
             conformance=config.conformance,
             graph=config.graph,
+            tenant=config.tenant,
+            role=config.role,
         )
 
     async def connect(self) -> Connection:

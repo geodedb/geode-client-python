@@ -90,6 +90,8 @@ class TransportConfig:
     hello_ver: str = "0.1.0"
     conformance: str = "min"
     graph: str = ""  # Graph name for DSN graph binding
+    tenant: str = ""  # Tenant identifier sent in HELLO (tenant_id)
+    role: str = ""  # FLE role sent in HELLO for field-level access control
 
     def __repr__(self) -> str:
         """Redact password from repr to prevent credential leaks in logs."""
@@ -199,6 +201,8 @@ def parse_dsn(dsn: str) -> TransportConfig:
             ("hello_ver", ("hello_ver",), str),
             ("conformance", ("conformance",), str),
             ("graph", ("graph",), str),
+            ("tenant", ("tenant", "tenant_id"), str),
+            ("role", ("role",), str),
         ]
 
         for field, aliases, converter in _PARAM_MAP:
