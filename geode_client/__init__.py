@@ -51,6 +51,7 @@ from .client import (
     SecurityWarning,
     open_database,
 )
+from .crypto import Cipher, CryptoError
 from .errors import (
     DriverError,
     NoRowsError,
@@ -155,6 +156,9 @@ __all__ = [
     "RetryPolicy",
     "default_retry_policy",
     "retry",
+    # Crypto (field-level encryption)
+    "Cipher",
+    "CryptoError",
 ]
 
 __version__ = "0.3.19"
