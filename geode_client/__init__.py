@@ -66,6 +66,13 @@ from .query_builder import (
     PredicateBuilder,
     QueryBuilder,
 )
+from .quote import (
+    InvalidIdentifierError,
+    InvalidStringError,
+    quote_ident,
+    quote_string,
+    sanitize_graph_name,
+)
 from .retry import RetryPolicy, default_retry_policy, retry
 from .schema import parse_schema_fs
 from .transport import (
@@ -161,6 +168,12 @@ __all__ = [
     # Crypto (field-level encryption)
     "Cipher",
     "CryptoError",
+    # Quoting / escaping
+    "quote_ident",
+    "quote_string",
+    "sanitize_graph_name",
+    "InvalidIdentifierError",
+    "InvalidStringError",
 ]
 
 __version__ = "0.3.19"
