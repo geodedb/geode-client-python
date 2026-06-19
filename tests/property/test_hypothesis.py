@@ -726,3 +726,34 @@ class TestFuzzLikeProperties:
         # Should always be able to build
         pattern = pb.build()
         assert isinstance(pattern, str)
+
+
+class TestFormatDSNRoundTrip:
+    """format_dsn(parse_dsn(...)) preserves core fields."""
+
+    @given(
+        host=st.from_regex(r"[a-z][a-z0-9.\-]{0,20}", fullmatch=True),
+        port=ports,
+        graph=st.from_regex(r"[a-zA-Z0-9_\-]{0,20}", fullmatch=True),
+        tenant=st.from_regex(r"[a-zA-Z0-9_\-]{0,20}", fullmatch=True),
+        role=st.from_regex(r"[a-zA-Z0-9_\-]{0,20}", fullmatch=True),
+    )
+    @settings(suppress_health_check=[HealthCheck.too_slow])
+    def test_round_trip_preserves_fields(self, host, port, graph, tenant, role):
+        from geode_client import format_dsn, parse_dsn
+        from geode_client.transport import TransportConfig, TransportType
+
+        cfg = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host=host,
+            port=port,
+            graph=graph,
+            tenant=tenant,
+            role=role,
+        )
+        cfg2 = parse_dsn(format_dsn(cfg))
+        assert cfg2.host == ("127.0.0.1" if host == "localhost" else host)
+        assert cfg2.port == port
+        assert cfg2.graph == graph
+        assert cfg2.tenant == tenant
+        assert cfg2.role == role
