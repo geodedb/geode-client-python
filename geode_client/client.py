@@ -903,6 +903,94 @@ class Connection:
 
         return results
 
+    async def _batch_exec_tx(self, statements: "List[Any]") -> None:
+        """Run all statements inside a single transaction (no retry)."""
+        await self.begin()
+        try:
+            for stmt in statements:
+                await self.execute(stmt.query, stmt.params)
+        except BaseException:
+            try:
+                await self.rollback()
+            except Exception:
+                pass
+            raise
+        await self.commit()
+
+    async def batch_exec(self, statements: "List[Any]") -> None:
+        """Execute statements in a single transaction with automatic retry.
+
+        Mirrors Go Pool.BatchExec: a single transaction pins the connection
+        for the whole batch; retryable errors (serialization/deadlock) are
+        retried per the default retry policy. An empty list is a no-op.
+        """
+        if not statements:
+            return
+
+        from .retry import default_retry_policy, retry
+
+        async def attempt() -> None:
+            await self._batch_exec_tx(statements)
+
+        await retry(attempt, default_retry_policy())
+
+    async def pipeline_exec(
+        self,
+        statements: "List[Any]",
+        chunk_size: int = 0,
+        max_workers: int = 0,
+    ) -> None:
+        """Execute statements in concurrent chunks via batch_exec.
+
+        Splits ``statements`` into chunks of ``chunk_size`` (default 100) and
+        runs up to ``max_workers`` (default 8) chunks concurrently. The first
+        error stops launching new chunks; in-flight chunks complete. The first
+        error encountered is raised.
+        """
+        if not statements:
+            return
+
+        from .batch import (
+            DEFAULT_CHUNK_SIZE,
+            DEFAULT_MAX_WORKERS,
+            chunk_statements,
+        )
+
+        if chunk_size <= 0:
+            chunk_size = DEFAULT_CHUNK_SIZE
+        if max_workers <= 0:
+            max_workers = DEFAULT_MAX_WORKERS
+
+        chunks = chunk_statements(statements, chunk_size)
+        sem = asyncio.Semaphore(max_workers)
+        first_error: List[BaseException] = []
+        tasks: List[asyncio.Task] = []
+
+        async def run_chunk(chunk: "List[Any]") -> None:
+            async with sem:
+                if first_error:
+                    return
+                try:
+                    await self.batch_exec(chunk)
+                except BaseException as exc:  # noqa: BLE001 - record first error
+                    if not first_error:
+                        first_error.append(exc)
+
+        for chunk in chunks:
+            if first_error:
+                break
+            t = asyncio.create_task(run_chunk(chunk))
+            tasks.append(t)
+            # Yield to the event loop so in-flight tasks can make progress
+            # and set first_error before we launch the next chunk.
+            await asyncio.sleep(0)
+
+        if tasks:
+            await asyncio.gather(*tasks)
+
+        if first_error:
+            raise first_error[0]
+
     async def close(self) -> None:
         """Close the connection."""
         if not self._connected:
