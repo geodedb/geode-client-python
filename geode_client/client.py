@@ -14,7 +14,7 @@ import warnings
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from . import validate
 from .proto import (
@@ -45,6 +45,9 @@ from .transport import (
     parse_dsn,
 )
 from .types import Value, ValueKind, decode_value
+
+if TYPE_CHECKING:
+    from .batch import Statement
 
 # Module-level logger - users can configure logging level as needed
 logger = logging.getLogger(__name__)
@@ -290,6 +293,14 @@ class AuthError(GeodeError):
     def __init__(self, *args: Any, code: Optional[str] = None) -> None:
         super().__init__(*args)
         self.code = code if code is not None else STATUS_AUTH
+
+
+class NoRowsError(GeodeError):
+    """Raised when a single-row accessor finds no rows (mirrors Go ErrNoRows)."""
+
+
+# Go-name alias for parity with the reference driver's ``ErrNoRows``.
+ErrNoRows = NoRowsError
 
 
 def is_auth_error(err: object) -> bool:
@@ -890,6 +901,28 @@ class Connection:
         first_page = self._empty_result_page(columns)
         return first_page, self._empty_pager
 
+    async def query_row(
+        self,
+        text: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, "Value"]:
+        """Execute a query and return its first row.
+
+        Raises NoRowsError if the result set is empty (mirrors Go ErrNoRows).
+        """
+        page, _ = await self.query(text, params)
+        if not page.rows:
+            raise NoRowsError("geode: no rows in result set")
+        return page.rows[0]
+
+    async def fetch_one(
+        self,
+        text: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, "Value"]:
+        """Alias for :meth:`query_row`."""
+        return await self.query_row(text, params)
+
     def _is_no_data_response(self, exec_resp: Any) -> bool:
         """Treat 02000 / no-active-result responses as an empty result set."""
         if not exec_resp.HasField("error"):
@@ -1003,6 +1036,94 @@ class Connection:
                     break
 
         return results
+
+    async def _batch_exec_tx(self, statements: "List[Statement]") -> None:
+        """Run all statements inside a single transaction (no retry)."""
+        await self.begin()
+        try:
+            for stmt in statements:
+                await self.execute(stmt.query, stmt.params)
+        except BaseException:
+            try:
+                await self.rollback()
+            except Exception:
+                pass
+            raise
+        await self.commit()
+
+    async def batch_exec(self, statements: "List[Statement]") -> None:
+        """Execute statements in a single transaction with automatic retry.
+
+        Mirrors Go Pool.BatchExec: a single transaction pins the connection
+        for the whole batch; retryable errors (serialization/deadlock) are
+        retried per the default retry policy. An empty list is a no-op.
+        """
+        if not statements:
+            return
+
+        from .retry import default_retry_policy, retry
+
+        async def attempt() -> None:
+            await self._batch_exec_tx(statements)
+
+        await retry(attempt, default_retry_policy())
+
+    async def pipeline_exec(
+        self,
+        statements: "List[Statement]",
+        chunk_size: int = 0,
+        max_workers: int = 0,
+    ) -> None:
+        """Execute statements in concurrent chunks via batch_exec.
+
+        Splits ``statements`` into chunks of ``chunk_size`` (default 100) and
+        runs up to ``max_workers`` (default 8) chunks concurrently. The first
+        error stops launching new chunks; in-flight chunks complete. The first
+        error encountered is raised.
+        """
+        if not statements:
+            return
+
+        from .batch import (
+            DEFAULT_CHUNK_SIZE,
+            DEFAULT_MAX_WORKERS,
+            chunk_statements,
+        )
+
+        if chunk_size <= 0:
+            chunk_size = DEFAULT_CHUNK_SIZE
+        if max_workers <= 0:
+            max_workers = DEFAULT_MAX_WORKERS
+
+        chunks = chunk_statements(statements, chunk_size)
+        sem = asyncio.Semaphore(max_workers)
+        first_error: List[BaseException] = []
+        tasks: List[asyncio.Task] = []
+
+        async def run_chunk(chunk: "List[Statement]") -> None:
+            async with sem:
+                if first_error:
+                    return
+                try:
+                    await self.batch_exec(chunk)
+                except BaseException as exc:  # noqa: BLE001 - record first error
+                    if not first_error:
+                        first_error.append(exc)
+
+        for chunk in chunks:
+            if first_error:
+                break
+            t = asyncio.create_task(run_chunk(chunk))
+            tasks.append(t)
+            # Yield to the event loop so in-flight tasks can make progress
+            # and set first_error before we launch the next chunk.
+            await asyncio.sleep(0)
+
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        if first_error:
+            raise first_error[0]
 
     async def close(self) -> None:
         """Close the connection."""

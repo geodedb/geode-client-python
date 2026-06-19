@@ -268,6 +268,28 @@ class TestSqlStateConstants:
         assert NO_DATA == "02000"
 
 
+class TestNoRowsError:
+    """Tests for NoRowsError (single-row accessor empty result)."""
+
+    def test_is_geode_error(self):
+        from geode_client import NoRowsError
+
+        assert issubclass(NoRowsError, GeodeError)
+
+    def test_err_no_rows_alias(self):
+        from geode_client import ErrNoRows, NoRowsError
+
+        assert ErrNoRows is NoRowsError
+
+    def test_raisable(self):
+        import pytest
+
+        from geode_client import NoRowsError
+
+        with pytest.raises(NoRowsError):
+            raise NoRowsError("geode: no rows in result set")
+
+
 class TestIsAuthError:
     """Tests for is_auth_error predicate."""
 
