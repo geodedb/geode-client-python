@@ -28,6 +28,11 @@ from .auth import (
     SessionInfo,
     User,
 )
+from .batch import (
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_MAX_WORKERS,
+    Statement,
+)
 from .client import (
     GEODE_AUTH_ALT,
     NO_DATA,
@@ -41,8 +46,10 @@ from .client import (
     Client,
     Column,
     Connection,
+    ErrNoRows,
     GeodeConnectionError,
     GeodeError,
+    NoRowsError,
     Page,
     PlanOperation,
     PreparedStatement,
@@ -56,13 +63,23 @@ from .client import (
     is_syntax_error,
     open_database,
 )
-from .pool import ConnectionPool, create_pool
+from .crypto import Cipher, CryptoError
+from .pool import ConnectionPool, create_pool, create_pool_from_dsn
 from .query_builder import (
     EdgeDirection,
     PatternBuilder,
     PredicateBuilder,
     QueryBuilder,
 )
+from .quote import (
+    InvalidIdentifierError,
+    InvalidStringError,
+    quote_ident,
+    quote_string,
+    sanitize_graph_name,
+)
+from .retry import RetryPolicy, default_retry_policy, retry
+from .schema import parse_schema_fs
 from .transport import (
     GrpcTransport,
     QuicTransport,
@@ -73,12 +90,20 @@ from .transport import (
     TransportType,
     UnsupportedSchemeError,
     create_transport,
+    format_dsn,
     parse_dsn,
+    redact_dsn,
 )
 from .types import (
+    Edge,
+    Node,
+    Path,
     Range,
     Value,
     ValueKind,
+    as_edge,
+    as_node,
+    as_path,
 )
 from .validate import ValidationError
 
@@ -93,6 +118,13 @@ __all__ = [
     "Value",
     "ValueKind",
     "Range",
+    # Graph value types
+    "Node",
+    "Edge",
+    "Path",
+    "as_node",
+    "as_edge",
+    "as_path",
     # Query building
     "QueryBuilder",
     "PatternBuilder",
@@ -103,6 +135,25 @@ __all__ = [
     # Prepared statements
     "PreparedStatement",
     "BatchResult",
+    # Batch / pipeline execution
+    "Statement",
+    "DEFAULT_CHUNK_SIZE",
+    "DEFAULT_MAX_WORKERS",
+    # Schema loading
+    "parse_schema_fs",
+    # Retry
+    "RetryPolicy",
+    "default_retry_policy",
+    "retry",
+    # Field-level encryption
+    "Cipher",
+    "CryptoError",
+    # GQL quoting helpers
+    "quote_ident",
+    "quote_string",
+    "sanitize_graph_name",
+    "InvalidIdentifierError",
+    "InvalidStringError",
     # Query analysis
     "QueryPlan",
     "QueryProfile",
@@ -110,6 +161,7 @@ __all__ = [
     # Connection pool
     "ConnectionPool",
     "create_pool",
+    "create_pool_from_dsn",
     # Authentication
     "AuthClient",
     "User",
@@ -125,6 +177,8 @@ __all__ = [
     "GrpcTransport",
     "create_transport",
     "parse_dsn",
+    "format_dsn",
+    "redact_dsn",
     # Validation
     "validate",
     "ValidationError",
@@ -137,6 +191,8 @@ __all__ = [
     "TransportConnectionError",
     "UnsupportedSchemeError",
     "SecurityWarning",
+    "NoRowsError",
+    "ErrNoRows",
     # Error classification (SQLSTATE predicates + constants)
     "is_auth_error",
     "is_syntax_error",
