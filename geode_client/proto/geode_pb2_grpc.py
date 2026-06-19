@@ -5,7 +5,7 @@ import warnings
 
 from . import geode_pb2 as geode__pb2
 
-GRPC_GENERATED_VERSION = '1.80.0'
+GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -25,7 +25,7 @@ if _version_not_supported:
     )
 
 
-class GeodeServiceStub(object):
+class GeodeServiceStub:
     """GeodeService provides gRPC access to the Geode database.
     """
 
@@ -77,7 +77,7 @@ class GeodeServiceStub(object):
                 _registered_method=True)
 
 
-class GeodeServiceServicer(object):
+class GeodeServiceServicer:
     """GeodeService provides gRPC access to the Geode database.
     """
 
@@ -180,7 +180,7 @@ def add_GeodeServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class GeodeService(object):
+class GeodeService:
     """GeodeService provides gRPC access to the Geode database.
     """
 

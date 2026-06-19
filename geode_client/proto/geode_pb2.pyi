@@ -126,7 +126,7 @@ class QuicServerMessage(_message.Message):
     def __init__(self, hello: _Optional[_Union[HelloResponse, _Mapping]] = ..., execute: _Optional[_Union[ExecutionResponse, _Mapping]] = ..., pull: _Optional[_Union[PullResponse, _Mapping]] = ..., ping: _Optional[_Union[PingResponse, _Mapping]] = ..., cdc_diag: _Optional[_Union[CdcDiagnosticsResponse, _Mapping]] = ..., cdc_ctrl: _Optional[_Union[CdcControlResponse, _Mapping]] = ..., begin: _Optional[_Union[BeginResponse, _Mapping]] = ..., commit: _Optional[_Union[CommitResponse, _Mapping]] = ..., rollback: _Optional[_Union[RollbackResponse, _Mapping]] = ..., savepoint: _Optional[_Union[SavepointResponse, _Mapping]] = ..., rollback_to: _Optional[_Union[RollbackToResponse, _Mapping]] = ..., backup: _Optional[_Union[BackupResponse, _Mapping]] = ..., restore: _Optional[_Union[RestoreResponse, _Mapping]] = ..., upload_backup: _Optional[_Union[UploadBackupResponse, _Mapping]] = ...) -> None: ...
 
 class HelloRequest(_message.Message):
-    __slots__ = ("username", "password", "tenant_id", "client_name", "client_version", "wanted_conformance", "graph")
+    __slots__ = ("username", "password", "tenant_id", "client_name", "client_version", "wanted_conformance", "graph", "role")
     USERNAME_FIELD_NUMBER: _ClassVar[int]
     PASSWORD_FIELD_NUMBER: _ClassVar[int]
     TENANT_ID_FIELD_NUMBER: _ClassVar[int]
@@ -134,6 +134,7 @@ class HelloRequest(_message.Message):
     CLIENT_VERSION_FIELD_NUMBER: _ClassVar[int]
     WANTED_CONFORMANCE_FIELD_NUMBER: _ClassVar[int]
     GRAPH_FIELD_NUMBER: _ClassVar[int]
+    ROLE_FIELD_NUMBER: _ClassVar[int]
     username: str
     password: str
     tenant_id: str
@@ -141,7 +142,8 @@ class HelloRequest(_message.Message):
     client_version: str
     wanted_conformance: str
     graph: str
-    def __init__(self, username: _Optional[str] = ..., password: _Optional[str] = ..., tenant_id: _Optional[str] = ..., client_name: _Optional[str] = ..., client_version: _Optional[str] = ..., wanted_conformance: _Optional[str] = ..., graph: _Optional[str] = ...) -> None: ...
+    role: str
+    def __init__(self, username: _Optional[str] = ..., password: _Optional[str] = ..., tenant_id: _Optional[str] = ..., client_name: _Optional[str] = ..., client_version: _Optional[str] = ..., wanted_conformance: _Optional[str] = ..., graph: _Optional[str] = ..., role: _Optional[str] = ...) -> None: ...
 
 class HelloResponse(_message.Message):
     __slots__ = ("success", "session_id", "error_message", "capabilities", "password_reset_required", "graph")
@@ -157,7 +159,7 @@ class HelloResponse(_message.Message):
     capabilities: _containers.RepeatedScalarFieldContainer[str]
     password_reset_required: bool
     graph: str
-    def __init__(self, success: bool = ..., session_id: _Optional[str] = ..., error_message: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., password_reset_required: bool = ..., graph: _Optional[str] = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ..., session_id: _Optional[str] = ..., error_message: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., password_reset_required: _Optional[bool] = ..., graph: _Optional[str] = ...) -> None: ...
 
 class ExecuteRequest(_message.Message):
     __slots__ = ("session_id", "query", "params")
@@ -249,7 +251,7 @@ class DataPage(_message.Message):
     final: bool
     ordered: bool
     order_keys: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, rows: _Optional[_Iterable[_Union[Row, _Mapping]]] = ..., final: bool = ..., ordered: bool = ..., order_keys: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, rows: _Optional[_Iterable[_Union[Row, _Mapping]]] = ..., final: _Optional[bool] = ..., ordered: _Optional[bool] = ..., order_keys: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Row(_message.Message):
     __slots__ = ("values",)
@@ -285,7 +287,7 @@ class Value(_message.Message):
     edge_val: EdgeValue
     path_val: PathValue
     ext_val: ExtendedValue
-    def __init__(self, null_val: _Optional[_Union[NullValue, _Mapping]] = ..., int_val: _Optional[_Union[IntValue, _Mapping]] = ..., double_val: _Optional[_Union[DoubleValue, _Mapping]] = ..., bool_val: bool = ..., string_val: _Optional[_Union[StringValue, _Mapping]] = ..., decimal_val: _Optional[_Union[DecimalValue, _Mapping]] = ..., bytes_val: _Optional[_Union[BytesValue, _Mapping]] = ..., list_val: _Optional[_Union[ListValue, _Mapping]] = ..., map_val: _Optional[_Union[MapValue, _Mapping]] = ..., node_val: _Optional[_Union[NodeValue, _Mapping]] = ..., edge_val: _Optional[_Union[EdgeValue, _Mapping]] = ..., path_val: _Optional[_Union[PathValue, _Mapping]] = ..., ext_val: _Optional[_Union[ExtendedValue, _Mapping]] = ...) -> None: ...
+    def __init__(self, null_val: _Optional[_Union[NullValue, _Mapping]] = ..., int_val: _Optional[_Union[IntValue, _Mapping]] = ..., double_val: _Optional[_Union[DoubleValue, _Mapping]] = ..., bool_val: _Optional[bool] = ..., string_val: _Optional[_Union[StringValue, _Mapping]] = ..., decimal_val: _Optional[_Union[DecimalValue, _Mapping]] = ..., bytes_val: _Optional[_Union[BytesValue, _Mapping]] = ..., list_val: _Optional[_Union[ListValue, _Mapping]] = ..., map_val: _Optional[_Union[MapValue, _Mapping]] = ..., node_val: _Optional[_Union[NodeValue, _Mapping]] = ..., edge_val: _Optional[_Union[EdgeValue, _Mapping]] = ..., path_val: _Optional[_Union[PathValue, _Mapping]] = ..., ext_val: _Optional[_Union[ExtendedValue, _Mapping]] = ...) -> None: ...
 
 class NullValue(_message.Message):
     __slots__ = ()
@@ -401,7 +403,7 @@ class ExtendedValue(_message.Message):
     int_val: int
     double_val: float
     bool_val: bool
-    def __init__(self, type_name: _Optional[str] = ..., text: _Optional[str] = ..., bytes: _Optional[bytes] = ..., int_val: _Optional[int] = ..., double_val: _Optional[float] = ..., bool_val: bool = ...) -> None: ...
+    def __init__(self, type_name: _Optional[str] = ..., text: _Optional[str] = ..., bytes: _Optional[bytes] = ..., int_val: _Optional[int] = ..., double_val: _Optional[float] = ..., bool_val: _Optional[bool] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message", "type", "anchor")
@@ -461,7 +463,7 @@ class ExplainProperties(_message.Message):
     distinct: bool
     union_mode: str
     union_part_count: int
-    def __init__(self, ordered: bool = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., distinct: bool = ..., union_mode: _Optional[str] = ..., union_part_count: _Optional[int] = ...) -> None: ...
+    def __init__(self, ordered: _Optional[bool] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., distinct: _Optional[bool] = ..., union_mode: _Optional[str] = ..., union_part_count: _Optional[int] = ...) -> None: ...
 
 class ExplainCalibrationEntry(_message.Message):
     __slots__ = ("idx", "est_rows", "actual_rows")
@@ -669,7 +671,7 @@ class ProfilePayload(_message.Message):
     graph_store_dirty: bool
     flagger_findings: _containers.RepeatedScalarFieldContainer[str]
     compact: bool
-    def __init__(self, profile_version: _Optional[int] = ..., ops: _Optional[_Iterable[_Union[ProfileOp, _Mapping]]] = ..., peak_contributors: _Optional[_Iterable[_Union[ProfilePeakContributor, _Mapping]]] = ..., totals: _Optional[_Union[ProfileTotals, _Mapping]] = ..., total_time_ns: _Optional[int] = ..., spills: _Optional[_Union[ProfileSpills, _Mapping]] = ..., memory: _Optional[_Union[ProfileMemory, _Mapping]] = ..., planner_estimates: _Optional[_Union[ProfilePlannerEstimates, _Mapping]] = ..., mem_curve: _Optional[_Iterable[_Union[ProfileMemCurvePoint, _Mapping]]] = ..., setop: _Optional[_Union[ProfileSetOp, _Mapping]] = ..., hashagg_spills: _Optional[int] = ..., hashagg_spill_reason: _Optional[str] = ..., committed_txns: _Optional[int] = ..., graph_store_nodes: _Optional[int] = ..., graph_store_edges: _Optional[int] = ..., graph_store_dirty: bool = ..., flagger_findings: _Optional[_Iterable[str]] = ..., compact: bool = ...) -> None: ...
+    def __init__(self, profile_version: _Optional[int] = ..., ops: _Optional[_Iterable[_Union[ProfileOp, _Mapping]]] = ..., peak_contributors: _Optional[_Iterable[_Union[ProfilePeakContributor, _Mapping]]] = ..., totals: _Optional[_Union[ProfileTotals, _Mapping]] = ..., total_time_ns: _Optional[int] = ..., spills: _Optional[_Union[ProfileSpills, _Mapping]] = ..., memory: _Optional[_Union[ProfileMemory, _Mapping]] = ..., planner_estimates: _Optional[_Union[ProfilePlannerEstimates, _Mapping]] = ..., mem_curve: _Optional[_Iterable[_Union[ProfileMemCurvePoint, _Mapping]]] = ..., setop: _Optional[_Union[ProfileSetOp, _Mapping]] = ..., hashagg_spills: _Optional[int] = ..., hashagg_spill_reason: _Optional[str] = ..., committed_txns: _Optional[int] = ..., graph_store_nodes: _Optional[int] = ..., graph_store_edges: _Optional[int] = ..., graph_store_dirty: _Optional[bool] = ..., flagger_findings: _Optional[_Iterable[str]] = ..., compact: _Optional[bool] = ...) -> None: ...
 
 class Heartbeat(_message.Message):
     __slots__ = ()
@@ -683,7 +685,7 @@ class PingResponse(_message.Message):
     __slots__ = ("ok",)
     OK_FIELD_NUMBER: _ClassVar[int]
     ok: bool
-    def __init__(self, ok: bool = ...) -> None: ...
+    def __init__(self, ok: _Optional[bool] = ...) -> None: ...
 
 class BeginRequest(_message.Message):
     __slots__ = ("read_only", "session_id")
@@ -691,7 +693,7 @@ class BeginRequest(_message.Message):
     SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     read_only: bool
     session_id: str
-    def __init__(self, read_only: bool = ..., session_id: _Optional[str] = ...) -> None: ...
+    def __init__(self, read_only: _Optional[bool] = ..., session_id: _Optional[str] = ...) -> None: ...
 
 class BeginResponse(_message.Message):
     __slots__ = ("session_id", "tx_id")
@@ -711,7 +713,7 @@ class CommitResponse(_message.Message):
     __slots__ = ("success",)
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
     success: bool
-    def __init__(self, success: bool = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ...) -> None: ...
 
 class RollbackRequest(_message.Message):
     __slots__ = ("session_id",)
@@ -723,7 +725,7 @@ class RollbackResponse(_message.Message):
     __slots__ = ("success",)
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
     success: bool
-    def __init__(self, success: bool = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ...) -> None: ...
 
 class SavepointRequest(_message.Message):
     __slots__ = ("name", "session_id")
@@ -737,7 +739,7 @@ class SavepointResponse(_message.Message):
     __slots__ = ("success",)
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
     success: bool
-    def __init__(self, success: bool = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ...) -> None: ...
 
 class RollbackToRequest(_message.Message):
     __slots__ = ("name", "session_id")
@@ -751,7 +753,7 @@ class RollbackToResponse(_message.Message):
     __slots__ = ("success",)
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
     success: bool
-    def __init__(self, success: bool = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ...) -> None: ...
 
 class CdcDiagnosticsRequest(_message.Message):
     __slots__ = ()
@@ -775,7 +777,7 @@ class CdcDiagnosticsConfig(_message.Message):
     flush_interval_ms: int
     batch_size: int
     pending_backpressure_watermark: int
-    def __init__(self, enabled: bool = ..., malformed_snapshot_interval: _Optional[int] = ..., malformed_hash_retain: _Optional[int] = ..., malformed_warn_pct: _Optional[float] = ..., malformed_abort_pct: _Optional[float] = ..., flush_interval_ms: _Optional[int] = ..., batch_size: _Optional[int] = ..., pending_backpressure_watermark: _Optional[int] = ...) -> None: ...
+    def __init__(self, enabled: _Optional[bool] = ..., malformed_snapshot_interval: _Optional[int] = ..., malformed_hash_retain: _Optional[int] = ..., malformed_warn_pct: _Optional[float] = ..., malformed_abort_pct: _Optional[float] = ..., flush_interval_ms: _Optional[int] = ..., batch_size: _Optional[int] = ..., pending_backpressure_watermark: _Optional[int] = ...) -> None: ...
 
 class CdcDiagnosticsEngine(_message.Message):
     __slots__ = ("is_running", "last_flush_ms", "peak_buffer", "current_buffer", "dynamic_batch_size", "batch_adjustments")
@@ -791,7 +793,7 @@ class CdcDiagnosticsEngine(_message.Message):
     current_buffer: int
     dynamic_batch_size: int
     batch_adjustments: int
-    def __init__(self, is_running: bool = ..., last_flush_ms: _Optional[int] = ..., peak_buffer: _Optional[int] = ..., current_buffer: _Optional[int] = ..., dynamic_batch_size: _Optional[int] = ..., batch_adjustments: _Optional[int] = ...) -> None: ...
+    def __init__(self, is_running: _Optional[bool] = ..., last_flush_ms: _Optional[int] = ..., peak_buffer: _Optional[int] = ..., current_buffer: _Optional[int] = ..., dynamic_batch_size: _Optional[int] = ..., batch_adjustments: _Optional[int] = ...) -> None: ...
 
 class CdcMalformedSnapshot(_message.Message):
     __slots__ = ("count", "ts_ms")
@@ -847,7 +849,7 @@ class CdcDiagnosticsResponse(_message.Message):
     malformed_hashes: _containers.RepeatedCompositeFieldContainer[CdcMalformedHash]
     version: str
     timestamp_ms: int
-    def __init__(self, malformed_change_records: _Optional[int] = ..., total_change_attempts: _Optional[int] = ..., malformed_ratio: _Optional[float] = ..., guardrail_warn_triggered: bool = ..., guardrail_abort_triggered: bool = ..., first_warn_ts_ms: _Optional[int] = ..., first_abort_ts_ms: _Optional[int] = ..., guardrail_epoch: _Optional[int] = ..., uptime_ms: _Optional[int] = ..., backpressure: bool = ..., config: _Optional[_Union[CdcDiagnosticsConfig, _Mapping]] = ..., engine: _Optional[_Union[CdcDiagnosticsEngine, _Mapping]] = ..., malformed_snapshots: _Optional[_Iterable[_Union[CdcMalformedSnapshot, _Mapping]]] = ..., malformed_hashes: _Optional[_Iterable[_Union[CdcMalformedHash, _Mapping]]] = ..., version: _Optional[str] = ..., timestamp_ms: _Optional[int] = ...) -> None: ...
+    def __init__(self, malformed_change_records: _Optional[int] = ..., total_change_attempts: _Optional[int] = ..., malformed_ratio: _Optional[float] = ..., guardrail_warn_triggered: _Optional[bool] = ..., guardrail_abort_triggered: _Optional[bool] = ..., first_warn_ts_ms: _Optional[int] = ..., first_abort_ts_ms: _Optional[int] = ..., guardrail_epoch: _Optional[int] = ..., uptime_ms: _Optional[int] = ..., backpressure: _Optional[bool] = ..., config: _Optional[_Union[CdcDiagnosticsConfig, _Mapping]] = ..., engine: _Optional[_Union[CdcDiagnosticsEngine, _Mapping]] = ..., malformed_snapshots: _Optional[_Iterable[_Union[CdcMalformedSnapshot, _Mapping]]] = ..., malformed_hashes: _Optional[_Iterable[_Union[CdcMalformedHash, _Mapping]]] = ..., version: _Optional[str] = ..., timestamp_ms: _Optional[int] = ...) -> None: ...
 
 class CdcControlRequest(_message.Message):
     __slots__ = ("action",)
@@ -863,15 +865,17 @@ class CdcControlResponse(_message.Message):
     success: bool
     status: str
     guardrail_epoch: int
-    def __init__(self, success: bool = ..., status: _Optional[str] = ..., guardrail_epoch: _Optional[int] = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ..., status: _Optional[str] = ..., guardrail_epoch: _Optional[int] = ...) -> None: ...
 
 class BackupRequest(_message.Message):
-    __slots__ = ("backup_type", "compress")
+    __slots__ = ("backup_type", "session_id", "compress")
     BACKUP_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     COMPRESS_FIELD_NUMBER: _ClassVar[int]
     backup_type: str
+    session_id: str
     compress: bool
-    def __init__(self, backup_type: _Optional[str] = ..., compress: bool = ...) -> None: ...
+    def __init__(self, backup_type: _Optional[str] = ..., session_id: _Optional[str] = ..., compress: _Optional[bool] = ...) -> None: ...
 
 class BackupResponse(_message.Message):
     __slots__ = ("success", "message", "backup_id", "backup_type", "size_bytes", "compression", "checksum")
@@ -889,15 +893,17 @@ class BackupResponse(_message.Message):
     size_bytes: int
     compression: str
     checksum: str
-    def __init__(self, success: bool = ..., message: _Optional[str] = ..., backup_id: _Optional[str] = ..., backup_type: _Optional[str] = ..., size_bytes: _Optional[int] = ..., compression: _Optional[str] = ..., checksum: _Optional[str] = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ..., message: _Optional[str] = ..., backup_id: _Optional[str] = ..., backup_type: _Optional[str] = ..., size_bytes: _Optional[int] = ..., compression: _Optional[str] = ..., checksum: _Optional[str] = ...) -> None: ...
 
 class RestoreRequest(_message.Message):
-    __slots__ = ("target_time", "confirm")
+    __slots__ = ("target_time", "confirm", "session_id")
     TARGET_TIME_FIELD_NUMBER: _ClassVar[int]
     CONFIRM_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     target_time: str
     confirm: bool
-    def __init__(self, target_time: _Optional[str] = ..., confirm: bool = ...) -> None: ...
+    session_id: str
+    def __init__(self, target_time: _Optional[str] = ..., confirm: _Optional[bool] = ..., session_id: _Optional[str] = ...) -> None: ...
 
 class RestoreResponse(_message.Message):
     __slots__ = ("success", "message", "restore_dir", "target_time", "restore_timestamp")
@@ -911,15 +917,19 @@ class RestoreResponse(_message.Message):
     restore_dir: str
     target_time: str
     restore_timestamp: int
-    def __init__(self, success: bool = ..., message: _Optional[str] = ..., restore_dir: _Optional[str] = ..., target_time: _Optional[str] = ..., restore_timestamp: _Optional[int] = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ..., message: _Optional[str] = ..., restore_dir: _Optional[str] = ..., target_time: _Optional[str] = ..., restore_timestamp: _Optional[int] = ...) -> None: ...
 
 class UploadBackupRequest(_message.Message):
-    __slots__ = ("size_bytes", "checksum")
+    __slots__ = ("size_bytes", "checksum", "session_id", "payload")
     SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
     CHECKSUM_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    PAYLOAD_FIELD_NUMBER: _ClassVar[int]
     size_bytes: int
     checksum: str
-    def __init__(self, size_bytes: _Optional[int] = ..., checksum: _Optional[str] = ...) -> None: ...
+    session_id: str
+    payload: bytes
+    def __init__(self, size_bytes: _Optional[int] = ..., checksum: _Optional[str] = ..., session_id: _Optional[str] = ..., payload: _Optional[bytes] = ...) -> None: ...
 
 class UploadBackupResponse(_message.Message):
     __slots__ = ("success", "message", "upload_path")
@@ -929,4 +939,4 @@ class UploadBackupResponse(_message.Message):
     success: bool
     message: str
     upload_path: str
-    def __init__(self, success: bool = ..., message: _Optional[str] = ..., upload_path: _Optional[str] = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ..., message: _Optional[str] = ..., upload_path: _Optional[str] = ...) -> None: ...
