@@ -214,6 +214,65 @@ def parse_dsn(dsn: str) -> TransportConfig:
     return config
 
 
+_REDACT_MASK = "***"
+_CREDENTIAL_PARAMS = ("user", "username", "pass", "password")
+
+
+def _redact_userinfo(uri: str) -> str:
+    """Mask the user:pass@ (or user@) segment of a URI authority."""
+    scheme_end = uri.find("://")
+    if scheme_end == -1:
+        at_idx = uri.rfind("@")
+        if at_idx == -1:
+            return uri
+        return _redact_at_segment(uri, 0, at_idx)
+
+    authority_start = scheme_end + 3
+    authority = uri[authority_start:]
+    at_idx = authority.rfind("@")
+    if at_idx == -1:
+        return uri
+    userinfo = authority[:at_idx]
+    rest = authority[at_idx:]
+    masked = f"{_REDACT_MASK}:{_REDACT_MASK}" if ":" in userinfo else _REDACT_MASK
+    return uri[:authority_start] + masked + rest
+
+
+def _redact_at_segment(uri: str, start: int, at_idx: int) -> str:
+    userinfo = uri[start:at_idx]
+    rest = uri[at_idx:]
+    masked = f"{_REDACT_MASK}:{_REDACT_MASK}" if ":" in userinfo else _REDACT_MASK
+    return uri[:start] + masked + rest
+
+
+def _redact_query_params(query: str) -> str:
+    if not query:
+        return query
+    params = query.split("&")
+    for i, param in enumerate(params):
+        key, sep, _ = param.partition("=")
+        if not sep:
+            continue
+        if key.lower() in _CREDENTIAL_PARAMS:
+            params[i] = f"{key}={_REDACT_MASK}"
+    return "&".join(params)
+
+
+def redact_dsn(dsn: str) -> str:
+    """Return ``dsn`` with credentials masked for safe logging.
+
+    Masks URI userinfo (``user:pass@`` -> ``***:***@``) and credential
+    query parameters (user, username, pass, password) to ``***``.
+    """
+    if not dsn:
+        return dsn
+    base, sep, query = dsn.partition("?")
+    base = _redact_userinfo(base)
+    if sep:
+        return base + "?" + _redact_query_params(query)
+    return base
+
+
 class Transport(abc.ABC):
     """Abstract base class for Geode transports."""
 

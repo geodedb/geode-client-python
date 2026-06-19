@@ -79,6 +79,7 @@ from .transport import (
     UnsupportedSchemeError,
     create_transport,
     parse_dsn,
+    redact_dsn,
 )
 from .types import (
     Range,
@@ -135,6 +136,7 @@ __all__ = [
     "GrpcTransport",
     "create_transport",
     "parse_dsn",
+    "redact_dsn",
     # Validation
     "validate",
     "ValidationError",
