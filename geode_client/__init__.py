@@ -19,7 +19,7 @@ Example:
         page, _ = await conn.query("RETURN 1 AS x")
 """
 
-from . import retry, validate
+from . import validate
 from .auth import (
     AuthClient,
     Permission,
@@ -65,7 +65,7 @@ from .query_builder import (
     PredicateBuilder,
     QueryBuilder,
 )
-from .retry import RetryPolicy, default_retry_policy
+from .retry import RetryPolicy, default_retry_policy, retry
 from .schema import parse_schema_fs
 from .transport import (
     GrpcTransport,

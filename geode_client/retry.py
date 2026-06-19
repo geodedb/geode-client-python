@@ -5,8 +5,6 @@ Only retryable Geode errors (serialization/deadlock) are retried.
 """
 
 import asyncio
-import sys
-import types
 from dataclasses import dataclass
 from typing import Awaitable, Callable, TypeVar
 
@@ -61,20 +59,3 @@ async def retry(fn: Callable[[], Awaitable[T]], policy: RetryPolicy) -> T:
                 break
             await asyncio.sleep(policy.backoff(attempt))
     raise last_exc
-
-
-# ---------------------------------------------------------------------------
-# Make this module callable so that ``from geode_client import retry`` followed
-# by ``await retry(fn, policy)`` works even when ``geode_client.retry`` is the
-# *module* (required for monkeypatching ``geode_client.retry.asyncio.sleep``).
-# ---------------------------------------------------------------------------
-class _CallableModule(types.ModuleType):
-    """Module subclass that delegates ``__call__`` to the ``retry`` coroutine."""
-
-    def __call__(
-        self, fn: Callable[[], Awaitable[T]], policy: RetryPolicy
-    ) -> Awaitable[T]:  # type: ignore[override]
-        return retry(fn, policy)
-
-
-sys.modules[__name__].__class__ = _CallableModule

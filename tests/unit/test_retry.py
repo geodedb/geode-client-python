@@ -32,10 +32,13 @@ class TestRetryPolicy:
 
 @pytest.fixture
 def no_sleep(monkeypatch):
+    import importlib
+
     async def fake_sleep(_):
         return None
 
-    monkeypatch.setattr("geode_client.retry.asyncio.sleep", fake_sleep)
+    retry_mod = importlib.import_module("geode_client.retry")
+    monkeypatch.setattr(retry_mod.asyncio, "sleep", fake_sleep)
 
 
 class TestRetry:
