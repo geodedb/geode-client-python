@@ -362,3 +362,103 @@ def decode_value(raw: Any, type_name: str) -> Value:
         return Value(kind=ValueKind.DECIMAL, decimal_value=Decimal(str(raw)))
 
     return Value(kind=ValueKind.STRING, str_value=str(raw))
+
+
+@dataclass
+class Node:
+    """Typed representation of a Geode graph node value."""
+
+    id: int = 0
+    labels: List[str] = None  # type: ignore[assignment]
+    properties: Dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.labels is None:
+            self.labels = []
+        if self.properties is None:
+            self.properties = {}
+
+
+@dataclass
+class Edge:
+    """Typed representation of a Geode graph edge (relationship) value."""
+
+    id: int = 0
+    start_node: int = 0
+    end_node: int = 0
+    type: str = ""
+    properties: Dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.properties is None:
+            self.properties = {}
+
+
+@dataclass
+class Path:
+    """Typed representation of a Geode graph path value."""
+
+    nodes: List[Node] = None  # type: ignore[assignment]
+    edges: List[Edge] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.nodes is None:
+            self.nodes = []
+        if self.edges is None:
+            self.edges = []
+
+
+def as_node(value: "Value") -> Node:
+    """Convert a NODE-kind Value to a typed Node.
+
+    Raises ValueError if ``value`` is not a NODE value.
+    """
+    if value.kind != ValueKind.NODE or value.object_value is None:
+        raise ValueError(f"Cannot convert {value.kind} to Node")
+    obj = value.object_value
+    node_id = obj["id"].int_value if "id" in obj else 0
+    labels: List[str] = []
+    if "labels" in obj and obj["labels"].array_value:
+        labels = [item.str_value for item in obj["labels"].array_value]
+    props: Dict[str, Any] = {}
+    if "properties" in obj and obj["properties"].object_value:
+        props = {k: v.raw_value for k, v in obj["properties"].object_value.items()}
+    return Node(id=node_id, labels=labels, properties=props)
+
+
+def as_edge(value: "Value") -> Edge:
+    """Convert an EDGE-kind Value to a typed Edge.
+
+    Raises ValueError if ``value`` is not an EDGE value.
+    """
+    if value.kind != ValueKind.EDGE or value.object_value is None:
+        raise ValueError(f"Cannot convert {value.kind} to Edge")
+    obj = value.object_value
+    edge_id = obj["id"].int_value if "id" in obj else 0
+    start = obj["start_node"].int_value if "start_node" in obj else 0
+    end = obj["end_node"].int_value if "end_node" in obj else 0
+    etype = obj["type"].str_value if "type" in obj else ""
+    props: Dict[str, Any] = {}
+    if "properties" in obj and obj["properties"].object_value:
+        props = {k: v.raw_value for k, v in obj["properties"].object_value.items()}
+    return Edge(
+        id=edge_id, start_node=start, end_node=end, type=etype, properties=props
+    )
+
+
+def as_path(value: "Value") -> Path:
+    """Convert a PATH-kind Value to a typed Path.
+
+    Recursively converts nested node and edge Values. Raises ValueError if
+    ``value`` is not a PATH value.
+    """
+    if value.kind != ValueKind.PATH or value.object_value is None:
+        raise ValueError(f"Cannot convert {value.kind} to Path")
+    obj = value.object_value
+    nodes: List[Node] = []
+    if "nodes" in obj and obj["nodes"].array_value:
+        nodes = [as_node(n) for n in obj["nodes"].array_value]
+    edges: List[Edge] = []
+    if "edges" in obj and obj["edges"].array_value:
+        edges = [as_edge(e) for e in obj["edges"].array_value]
+    return Path(nodes=nodes, edges=edges)

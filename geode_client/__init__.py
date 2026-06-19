@@ -89,9 +89,15 @@ from .transport import (
     redact_dsn,
 )
 from .types import (
+    Edge,
+    Node,
+    Path,
     Range,
     Value,
     ValueKind,
+    as_edge,
+    as_node,
+    as_path,
 )
 from .validate import ValidationError
 
@@ -106,6 +112,12 @@ __all__ = [
     "Value",
     "ValueKind",
     "Range",
+    "Node",
+    "Edge",
+    "Path",
+    "as_node",
+    "as_edge",
+    "as_path",
     # Batch / schema
     "Statement",
     "DEFAULT_CHUNK_SIZE",
