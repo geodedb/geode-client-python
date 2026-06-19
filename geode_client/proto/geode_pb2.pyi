@@ -868,12 +868,14 @@ class CdcControlResponse(_message.Message):
     def __init__(self, success: bool = ..., status: _Optional[str] = ..., guardrail_epoch: _Optional[int] = ...) -> None: ...
 
 class BackupRequest(_message.Message):
-    __slots__ = ("backup_type", "compress")
+    __slots__ = ("backup_type", "session_id", "compress")
     BACKUP_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     COMPRESS_FIELD_NUMBER: _ClassVar[int]
     backup_type: str
+    session_id: str
     compress: bool
-    def __init__(self, backup_type: _Optional[str] = ..., compress: bool = ...) -> None: ...
+    def __init__(self, backup_type: _Optional[str] = ..., session_id: _Optional[str] = ..., compress: bool = ...) -> None: ...
 
 class BackupResponse(_message.Message):
     __slots__ = ("success", "message", "backup_id", "backup_type", "size_bytes", "compression", "checksum")
@@ -894,12 +896,14 @@ class BackupResponse(_message.Message):
     def __init__(self, success: bool = ..., message: _Optional[str] = ..., backup_id: _Optional[str] = ..., backup_type: _Optional[str] = ..., size_bytes: _Optional[int] = ..., compression: _Optional[str] = ..., checksum: _Optional[str] = ...) -> None: ...
 
 class RestoreRequest(_message.Message):
-    __slots__ = ("target_time", "confirm")
+    __slots__ = ("target_time", "confirm", "session_id")
     TARGET_TIME_FIELD_NUMBER: _ClassVar[int]
     CONFIRM_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     target_time: str
     confirm: bool
-    def __init__(self, target_time: _Optional[str] = ..., confirm: bool = ...) -> None: ...
+    session_id: str
+    def __init__(self, target_time: _Optional[str] = ..., confirm: bool = ..., session_id: _Optional[str] = ...) -> None: ...
 
 class RestoreResponse(_message.Message):
     __slots__ = ("success", "message", "restore_dir", "target_time", "restore_timestamp")
@@ -916,12 +920,16 @@ class RestoreResponse(_message.Message):
     def __init__(self, success: bool = ..., message: _Optional[str] = ..., restore_dir: _Optional[str] = ..., target_time: _Optional[str] = ..., restore_timestamp: _Optional[int] = ...) -> None: ...
 
 class UploadBackupRequest(_message.Message):
-    __slots__ = ("size_bytes", "checksum")
+    __slots__ = ("size_bytes", "checksum", "session_id", "payload")
     SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
     CHECKSUM_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    PAYLOAD_FIELD_NUMBER: _ClassVar[int]
     size_bytes: int
     checksum: str
-    def __init__(self, size_bytes: _Optional[int] = ..., checksum: _Optional[str] = ...) -> None: ...
+    session_id: str
+    payload: bytes
+    def __init__(self, size_bytes: _Optional[int] = ..., checksum: _Optional[str] = ..., session_id: _Optional[str] = ..., payload: _Optional[bytes] = ...) -> None: ...
 
 class UploadBackupResponse(_message.Message):
     __slots__ = ("success", "message", "upload_path")
