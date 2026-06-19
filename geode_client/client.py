@@ -716,7 +716,16 @@ class Connection:
 
         # Check for error
         if exec_resp.HasField("error"):
-            raise QueryError(f"{exec_resp.error.code}: {exec_resp.error.message}")
+            from .errors import DriverError
+
+            status_class = ""
+            if exec_resp.HasField("status"):
+                status_class = exec_resp.status.status_class
+            raise DriverError(
+                code=exec_resp.error.code,
+                status_class=status_class,
+                message=exec_resp.error.message,
+            )
 
         # Parse columns from schema
         columns: List[Column] = []
@@ -743,8 +752,15 @@ class Connection:
             if resp.HasField("execute"):
                 exec_resp = resp.execute
                 if exec_resp.HasField("error"):
-                    raise QueryError(
-                        f"{exec_resp.error.code}: {exec_resp.error.message}"
+                    from .errors import DriverError
+
+                    status_class = ""
+                    if exec_resp.HasField("status"):
+                        status_class = exec_resp.status.status_class
+                    raise DriverError(
+                        code=exec_resp.error.code,
+                        status_class=status_class,
+                        message=exec_resp.error.message,
                     )
                 if exec_resp.HasField("page"):
                     first_page = self._parse_first_page(exec_resp, columns)
@@ -760,6 +776,30 @@ class Connection:
         # Empty result
         first_page = Page(columns=columns, rows=[], ordered=False, final=True)
         return first_page, self._empty_pager
+
+    async def query_row(
+        self,
+        text: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, "Value"]:
+        """Execute a query and return its first row.
+
+        Raises NoRowsError if the result set is empty (mirrors Go ErrNoRows).
+        """
+        from .errors import NoRowsError
+
+        page, _ = await self.query(text, params)
+        if not page.rows:
+            raise NoRowsError("geode: no rows in result set")
+        return page.rows[0]
+
+    async def fetch_one(
+        self,
+        text: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, "Value"]:
+        """Alias for :meth:`query_row`."""
+        return await self.query_row(text, params)
 
     async def execute(self, text: str, params: Optional[Dict[str, Any]] = None) -> None:
         """

@@ -51,6 +51,13 @@ from .client import (
     SecurityWarning,
     open_database,
 )
+from .errors import (
+    DriverError,
+    NoRowsError,
+    is_auth_error,
+    is_retryable_error,
+    is_syntax_error,
+)
 from .pool import ConnectionPool, create_pool
 from .query_builder import (
     EdgeDirection,
@@ -138,6 +145,11 @@ __all__ = [
     "TransportConnectionError",
     "UnsupportedSchemeError",
     "SecurityWarning",
+    "DriverError",
+    "NoRowsError",
+    "is_auth_error",
+    "is_syntax_error",
+    "is_retryable_error",
 ]
 
 __version__ = "0.3.19"
