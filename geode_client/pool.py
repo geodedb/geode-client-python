@@ -8,6 +8,7 @@ import asyncio
 from typing import Optional
 
 from .client import Client, Connection
+from .transport import parse_dsn
 
 
 class ConnectionPool:
@@ -254,3 +255,57 @@ async def create_pool(
     pool = ConnectionPool(host, port, min_size, max_size, **kwargs)
     await pool.initialize()
     return pool
+
+
+def create_pool_from_dsn(
+    dsn: str,
+    *,
+    min_size: int = 1,
+    max_size: int = 3,
+    timeout: float = 30.0,
+    **kwargs,
+) -> ConnectionPool:
+    """Build a ConnectionPool from a DSN string (mirrors Go NewPoolFromConfig).
+
+    Parses ``dsn`` into a transport config and constructs an (uninitialized)
+    ConnectionPool with the resulting host/port and connection parameters.
+    Await ``pool.initialize()`` or use ``async with pool:`` to open it.
+
+    Args:
+        dsn: Connection DSN, e.g. ``quic://host:3141?graph=g&user=u&pass=p``.
+        min_size: Minimum pool size.
+        max_size: Maximum pool size.
+        timeout: Acquire timeout (seconds).
+        **kwargs: Extra connection params, overriding values parsed from dsn.
+
+    Returns:
+        An uninitialized ConnectionPool.
+    """
+    config = parse_dsn(dsn)
+    conn_kwargs = {
+        "transport_type": config.transport_type,
+        "tls_enabled": config.tls_enabled,
+        "skip_verify": config.skip_verify,
+        "ca_cert": config.ca_cert,
+        "client_cert": config.client_cert,
+        "client_key": config.client_key,
+        "server_name": config.server_name,
+        "username": config.username,
+        "password": config.password,
+        "page_size": config.page_size,
+        "hello_name": config.hello_name,
+        "hello_ver": config.hello_ver,
+        "conformance": config.conformance,
+        "graph": config.graph,
+        "tenant": config.tenant,
+        "role": config.role,
+    }
+    conn_kwargs.update(kwargs)
+    return ConnectionPool(
+        host=config.host,
+        port=config.port,
+        min_size=min_size,
+        max_size=max_size,
+        timeout=timeout,
+        **conn_kwargs,
+    )

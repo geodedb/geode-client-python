@@ -59,7 +59,7 @@ from .errors import (
     is_retryable_error,
     is_syntax_error,
 )
-from .pool import ConnectionPool, create_pool
+from .pool import ConnectionPool, create_pool, create_pool_from_dsn
 from .query_builder import (
     EdgeDirection,
     PatternBuilder,
@@ -128,6 +128,7 @@ __all__ = [
     # Connection pool
     "ConnectionPool",
     "create_pool",
+    "create_pool_from_dsn",
     # Authentication
     "AuthClient",
     "User",
