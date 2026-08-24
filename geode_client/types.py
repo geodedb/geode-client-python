@@ -166,8 +166,22 @@ class Value:
 
     @property
     def as_object(self) -> Dict[str, "Value"]:
-        """Get value as object."""
-        if self.kind == ValueKind.OBJECT and self.object_value is not None:
+        """Get value as object.
+
+        NODE, EDGE and PATH also carry their payload in ``object_value``
+        (id/labels/properties, endpoints, nodes/edges), so they are readable
+        through this accessor too.
+        """
+        if (
+            self.kind
+            in (
+                ValueKind.OBJECT,
+                ValueKind.NODE,
+                ValueKind.EDGE,
+                ValueKind.PATH,
+            )
+            and self.object_value is not None
+        ):
             return self.object_value
         raise ValueError(f"Cannot convert {self.kind} to object")
 
@@ -294,6 +308,10 @@ def _str_value(kind: ValueKind) -> Any:
 _DECODERS: Dict[str, Callable[[Any], "Value"]] = {
     "INT": _decode_int,
     "DECIMAL": _decode_decimal,
+    "NUMERIC": _decode_decimal,
+    "FLOAT": _decode_decimal,
+    "DOUBLE": _decode_decimal,
+    "REAL": _decode_decimal,
     "BOOL": _decode_bool,
     "STRING": _str_value(ValueKind.STRING),
     "BYTEA": _decode_bytea,

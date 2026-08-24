@@ -13,18 +13,24 @@ import logging
 import warnings
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from . import validate
 from .proto import (
     BeginRequest,
+    BytesKind,
+    BytesValue,
     CommitRequest,
+    DecimalValue,
     DoubleValue,
     ExecuteRequest,
     HelloRequest,
     IntKind,
     IntValue,
+    ListValue,
+    MapEntry,
+    MapValue,
     NullValue,
     Param,
     PullRequest,
@@ -54,6 +60,10 @@ logger = logging.getLogger(__name__)
 
 CONNECT_RETRY_ATTEMPTS = 3
 CONNECT_RETRY_DELAY_SECONDS = 0.05
+
+# Maximum nesting depth for container parameters, mirroring the server/CLI
+# PARAM_MAX_DEPTH so over-nested params are rejected before hitting the wire.
+PARAM_MAX_DEPTH = 64
 
 
 class SecurityWarning(UserWarning):
@@ -565,8 +575,18 @@ class Connection:
         validated_name = validate.identifier(savepoint.name)
         await self.execute(f"ROLLBACK TO SAVEPOINT {validated_name}")
 
-    def _python_to_proto_value(self, value: Any) -> ProtoValue:
-        """Convert a Python value to a protobuf Value."""
+    def _python_to_proto_value(self, value: Any, depth: int = 0) -> ProtoValue:
+        """Convert a Python value to a protobuf Value.
+
+        Containers are encoded structurally (list/tuple -> list_val,
+        dict -> map_val) so the server receives a real collection instead of
+        a stringified Python repr, which made ``x IN $list`` fail open
+        (ENG-3910).  ``str`` and ``bytes`` stay scalars.
+        """
+        if depth > PARAM_MAX_DEPTH:
+            raise ValueError(
+                f"Parameter nesting exceeds maximum depth of {PARAM_MAX_DEPTH}"
+            )
         if value is None:
             return ProtoValue(null_val=NullValue())
         elif isinstance(value, bool):
@@ -579,11 +599,70 @@ class Connection:
             return ProtoValue(
                 string_val=StringValue(value=value, kind=StringKind.STRING)
             )
+        elif isinstance(value, (bytes, bytearray)):
+            return ProtoValue(
+                bytes_val=BytesValue(value=bytes(value), kind=BytesKind.BYTEA)
+            )
+        elif isinstance(value, Decimal):
+            return self._decimal_to_proto_value(value)
+        elif isinstance(value, (list, tuple)):
+            return ProtoValue(
+                list_val=ListValue(
+                    values=[
+                        self._python_to_proto_value(item, depth + 1) for item in value
+                    ]
+                )
+            )
+        elif isinstance(value, dict):
+            return ProtoValue(
+                map_val=MapValue(
+                    entries=[
+                        MapEntry(
+                            key=str(key),
+                            value=self._python_to_proto_value(item, depth + 1),
+                        )
+                        for key, item in value.items()
+                    ]
+                )
+            )
         else:
             # Fallback: convert to string
             return ProtoValue(
                 string_val=StringValue(value=str(value), kind=StringKind.STRING)
             )
+
+    def _decimal_to_proto_value(self, value: Decimal) -> ProtoValue:
+        """Encode a Decimal as decimal_val, falling back to string when needed.
+
+        The wire coefficient is an i128 decimal string, so non-finite values
+        and coefficients outside the i128 range are sent as strings instead.
+        """
+        if not value.is_finite():
+            return ProtoValue(
+                string_val=StringValue(value=str(value), kind=StringKind.STRING)
+            )
+        sign, digits, exponent = value.as_tuple()
+        exponent = int(exponent)
+        magnitude = int("".join(str(d) for d in digits) or "0")
+        if exponent > 0:
+            # e.g. Decimal("1E+3"): fold the positive exponent into the digits.
+            magnitude *= 10**exponent
+            scale = 0
+        else:
+            scale = -exponent
+        coeff = -magnitude if sign else magnitude
+        if not (-(2**127) <= coeff < 2**127):
+            return ProtoValue(
+                string_val=StringValue(value=str(value), kind=StringKind.STRING)
+            )
+        return ProtoValue(
+            decimal_val=DecimalValue(
+                coeff=str(coeff),
+                scale=scale,
+                orig_scale=scale,
+                orig_repr=format(value, "f"),
+            )
+        )
 
     def _build_node_value(self, node: Any) -> Value:
         """Build a NODE Value from a protobuf NodeValue."""
@@ -623,6 +702,42 @@ class Connection:
             },
         )
 
+    def _build_decimal_value(self, decimal_val: Any) -> Value:
+        """Build a DECIMAL Value from a protobuf DecimalValue.
+
+        ``orig_repr`` carries the engine's original rendering (including any
+        trailing zeros) and wins when present, matching the Go client.  The
+        fallback scales the exact i128 ``coeff`` by ``10**-scale`` via the
+        Decimal tuple so no context rounding or float conversion happens.
+        """
+        orig_repr = decimal_val.orig_repr
+        if orig_repr:
+            try:
+                return Value(
+                    kind=ValueKind.DECIMAL,
+                    decimal_value=Decimal(orig_repr),
+                    decimal_scale=str(decimal_val.orig_scale),
+                    str_value=orig_repr,
+                )
+            except InvalidOperation:
+                logger.warning(
+                    "Invalid decimal orig_repr %r, using coeff/scale", orig_repr
+                )
+        try:
+            sign, digits, exponent = Decimal(decimal_val.coeff or "0").as_tuple()
+        except InvalidOperation:
+            logger.warning(
+                "Invalid decimal coeff %r, decoding as string", decimal_val.coeff
+            )
+            return Value(kind=ValueKind.DECIMAL, str_value=decimal_val.coeff)
+        dec = Decimal((sign, digits, int(exponent) - decimal_val.scale))
+        return Value(
+            kind=ValueKind.DECIMAL,
+            decimal_value=dec,
+            decimal_scale=str(decimal_val.scale),
+            str_value=orig_repr,
+        )
+
     def _proto_value_to_python(self, proto_val: ProtoValue, type_name: str) -> Value:
         """Convert a protobuf Value to a typed Value object."""
         if proto_val.HasField("null_val"):
@@ -636,6 +751,8 @@ class Connection:
                 kind=ValueKind.DECIMAL,
                 decimal_value=Decimal(str(proto_val.double_val.value)),
             )
+        elif proto_val.HasField("decimal_val"):
+            return self._build_decimal_value(proto_val.decimal_val)
         elif proto_val.HasField("bool_val"):
             return Value(kind=ValueKind.BOOL, bool_value=proto_val.bool_val)
         elif proto_val.HasField("bytes_val"):
@@ -687,7 +804,12 @@ class Connection:
                 return Value(kind=ValueKind.BYTEA, bytes_value=ext.bytes)
             return Value(kind=ValueKind.STRING, str_value=ext.type_name)
         else:
-            return Value(kind=ValueKind.NULL)
+            # Never fabricate NULL here: a silently swallowed oneof arm turned
+            # every FLOAT result into NULL for two releases (ENG-3909).
+            raise GeodeError(
+                "Cannot decode protobuf Value: unhandled kind "
+                f"{proto_val.WhichOneof('kind')!r} (server/client version mismatch?)"
+            )
 
     def _parse_proto_rows(
         self,

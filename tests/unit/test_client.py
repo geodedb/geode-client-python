@@ -1129,13 +1129,17 @@ class TestProtoValueConversion:
         result = conn._proto_value_to_python(proto, "EXT")
         assert result.as_string == "CUSTOM"
 
-    def test_unknown_field_returns_null(self):
-        """Test converting proto value with no recognized field returns NULL."""
+    def test_unknown_field_raises(self):
+        """An unrecognized oneof arm must fail loudly, not decode as NULL.
+
+        Silently returning NULL for an unhandled arm hid the missing
+        decimal_val branch (ENG-3909) behind plausible-looking NULL results.
+        """
         conn = self._make_conn()
         proto = MagicMock()
         proto.HasField = MagicMock(return_value=False)
-        result = conn._proto_value_to_python(proto, "UNKNOWN")
-        assert result.kind.name == "NULL"
+        with pytest.raises(GeodeError, match="unhandled kind"):
+            conn._proto_value_to_python(proto, "UNKNOWN")
 
 
 class TestPythonToProtoConversion:
@@ -1166,11 +1170,23 @@ class TestPythonToProtoConversion:
         result = conn._python_to_proto_value("hello")
         assert result.string_val.value == "hello"
 
-    def test_fallback_to_string(self):
-        """Test non-standard types are converted to string."""
+    def test_list_value(self):
+        """Lists are encoded structurally, not stringified (ENG-3910)."""
         conn = Connection()
         result = conn._python_to_proto_value([1, 2, 3])
-        assert result.string_val.value == "[1, 2, 3]"
+        assert result.WhichOneof("kind") == "list_val"
+        assert [v.int_val.value for v in result.list_val.values] == [1, 2, 3]
+
+    def test_fallback_to_string(self):
+        """Test non-standard types are converted to string."""
+
+        class Custom:
+            def __str__(self):
+                return "custom"
+
+        conn = Connection()
+        result = conn._python_to_proto_value(Custom())
+        assert result.string_val.value == "custom"
 
 
 class TestConnectionExplainAndProfile:
