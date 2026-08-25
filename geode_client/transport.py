@@ -79,6 +79,11 @@ _DEFAULT_HELLO_NAME = "geode-python"
 _DEFAULT_HELLO_VER = "0.1.0"
 _DEFAULT_CONFORMANCE = "min"
 
+# Per-message read timeout and QUIC connection idle timeout (seconds). Both are
+# configurable so long-running server work does not trip the transport.
+_DEFAULT_READ_TIMEOUT = 30.0
+_DEFAULT_IDLE_TIMEOUT = 60.0
+
 
 @dataclass
 class TransportConfig:
@@ -102,6 +107,10 @@ class TransportConfig:
     graph: str = ""  # Graph name for DSN graph binding
     tenant: str = ""  # Tenant id for multi-tenant isolation (HelloRequest.tenant_id)
     role: str = ""  # FLE role for field-level access control (HelloRequest.role)
+    # Seconds to wait for a single server message before giving up.
+    read_timeout: float = _DEFAULT_READ_TIMEOUT
+    # Seconds a QUIC connection may stay idle before the peer closes it.
+    idle_timeout: float = _DEFAULT_IDLE_TIMEOUT
 
     def __repr__(self) -> str:
         """Redact password from repr to prevent credential leaks in logs."""
@@ -142,6 +151,8 @@ def parse_dsn(dsn: str) -> TransportConfig:
     - tenant/tenant_id: tenant id for multi-tenant isolation
     - role: FLE role for field-level access control
     - connect_timeout/timeout: connection timeout in seconds
+    - read_timeout: per-message read timeout in seconds (default: 30)
+    - idle_timeout: QUIC connection idle timeout in seconds (default: 60)
 
     Args:
         dsn: Data source name string
@@ -224,6 +235,8 @@ def parse_dsn(dsn: str) -> TransportConfig:
             ("graph", ("graph",), str),
             ("tenant", ("tenant", "tenant_id"), str),
             ("role", ("role",), str),
+            ("read_timeout", ("read_timeout",), float),
+            ("idle_timeout", ("idle_timeout",), float),
         ]
 
         for field, aliases, converter in _PARAM_MAP:
@@ -294,6 +307,13 @@ def redact_dsn(dsn: str) -> str:
     return base
 
 
+def _format_seconds(value: float) -> str:
+    """Render a timeout, dropping the fraction for whole-second values."""
+    if float(value).is_integer():
+        return str(int(value))
+    return str(value)
+
+
 def _format_host_port(host: str, port: int) -> str:
     """Join host and port, bracketing IPv6 literals."""
     if ":" in host and not host.startswith("["):
@@ -338,6 +358,10 @@ def format_dsn(config: "TransportConfig") -> str:
         params.append(("tenant", config.tenant))
     if config.role:
         params.append(("role", config.role))
+    if config.read_timeout != _DEFAULT_READ_TIMEOUT:
+        params.append(("read_timeout", _format_seconds(config.read_timeout)))
+    if config.idle_timeout != _DEFAULT_IDLE_TIMEOUT:
+        params.append(("idle_timeout", _format_seconds(config.idle_timeout)))
 
     userinfo = ""
     if config.username and config.password:
@@ -486,9 +510,13 @@ class QuicTransport(Transport):
                 self.transmit()
 
         # Configure QUIC
+        # idle_timeout caps how long the connection may sit without traffic;
+        # without it aioquic's 60s default closes connections during long
+        # server-side work regardless of the per-message read timeout.
         configuration = QuicConfiguration(
             is_client=True,
             alpn_protocols=["geode/1"],
+            idle_timeout=self.config.idle_timeout,
         )
 
         # Always set server_name for SNI. When skip_verify is enabled against
@@ -577,10 +605,19 @@ class QuicTransport(Transport):
         frame = struct.pack(">I", len(data)) + data
         self._protocol.write_to_stream(self._stream_id, frame)
 
-    async def _read_message(self, read_timeout: float = 30.0) -> QuicServerMessage:
-        """Read a length-prefixed protobuf message with timeout."""
+    async def _read_message(
+        self, read_timeout: Optional[float] = None
+    ) -> QuicServerMessage:
+        """Read a length-prefixed protobuf message with timeout.
+
+        Falls back to the configured ``read_timeout`` when no explicit
+        override is supplied.
+        """
         if not self._connected:
             raise TransportError("Not connected")
+
+        if read_timeout is None:
+            read_timeout = self.config.read_timeout
 
         # Read 4-byte length prefix
         while len(self._buffer) < 4:

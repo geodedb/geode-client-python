@@ -391,6 +391,8 @@ class Connection:
         graph: str = "",
         tenant: str = "",
         role: str = "",
+        read_timeout: float = 30.0,
+        idle_timeout: float = 60.0,
     ):
         """
         Initialize connection parameters.
@@ -416,6 +418,11 @@ class Connection:
                 HelloRequest.tenant_id; only sent when non-empty)
             role: FLE role for field-level access control (sent as
                 HelloRequest.role; only sent when non-empty)
+            read_timeout: Seconds to wait for a single server message before
+                failing (default 30). Raise it for long-running queries.
+            idle_timeout: Seconds a QUIC connection may stay idle before it is
+                closed (default 60). Must be at least as large as
+                read_timeout for long server-side stalls to survive.
         """
         # Normalize "localhost" to "127.0.0.1"
         self.host = "127.0.0.1" if host == "localhost" else host
@@ -436,6 +443,8 @@ class Connection:
         self.graph = graph
         self.tenant = tenant
         self.role = role
+        self.read_timeout = read_timeout
+        self.idle_timeout = idle_timeout
 
         # Transport state (serialization handled by transport-level lock)
         self._transport: Optional[Transport] = None
@@ -496,6 +505,8 @@ class Connection:
             graph=self.graph,
             tenant=self.tenant,
             role=self.role,
+            read_timeout=self.read_timeout,
+            idle_timeout=self.idle_timeout,
         )
 
         # Send HELLO handshake. tenant_id and role are optional proto3 fields
@@ -902,7 +913,9 @@ class Connection:
     async def _read_execute_until_page(self, transport: Transport) -> Optional[Any]:
         """Read execute responses until a page, error, or heartbeat arrives."""
         while True:
-            resp = await asyncio.wait_for(transport.read_next(), timeout=5.0)
+            resp = await asyncio.wait_for(
+                transport.read_next(), timeout=self.read_timeout
+            )
             if not resp.HasField("execute"):
                 return None
             exec_resp = resp.execute
@@ -1326,6 +1339,8 @@ class Client:
         - page_size: default page size
         - tenant/tenant_id: tenant id for multi-tenant isolation
         - role: FLE role for field-level access control
+        - read_timeout: per-message read timeout in seconds (default 30)
+        - idle_timeout: QUIC connection idle timeout in seconds (default 60)
 
         Args:
             url: Connection URL
@@ -1361,6 +1376,8 @@ class Client:
             graph=config.graph,
             tenant=config.tenant,
             role=config.role,
+            read_timeout=config.read_timeout,
+            idle_timeout=config.idle_timeout,
         )
 
     async def connect(self) -> Connection:

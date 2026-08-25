@@ -371,6 +371,24 @@ These parameters can be used in DSN connection strings (see [DSN specification](
 | `key` | `client_key` | string | - | Path to client private key file (for mTLS) |
 | `server_name` | - | string | hostname | SNI server name for TLS |
 | `connect_timeout` | `timeout` | int | 30 | Connection timeout in seconds |
+| `read_timeout` | - | float | 30 | Per-message read timeout in seconds |
+| `idle_timeout` | - | float | 60 | QUIC connection idle timeout in seconds |
+
+### Long-Running Queries
+
+Queries that keep the server busy for a long time need both timeouts raised:
+`read_timeout` bounds how long the client waits for a single server message,
+while `idle_timeout` bounds how long the underlying QUIC connection may sit
+without traffic before it is torn down. Raising only `read_timeout` is not
+enough — the connection is closed at `idle_timeout` regardless.
+
+```python
+# Allow up to 5 minutes of server-side work per message
+client = Client.from_url("quic://localhost:3141?read_timeout=300&idle_timeout=360")
+
+# Same via the Python API
+client = Client(host="localhost", port=3141, read_timeout=300.0, idle_timeout=360.0)
+```
 
 ### Python API Parameters
 
@@ -387,6 +405,8 @@ When using `Client()` constructor directly:
 | `client_cert` | str | `None` | Path to client certificate for mTLS |
 | `client_key` | str | `None` | Path to client private key for mTLS |
 | `server_name` | str | hostname | SNI server name for TLS |
+| `read_timeout` | float | `30.0` | Per-message read timeout (seconds) |
+| `idle_timeout` | float | `60.0` | QUIC connection idle timeout (seconds) |
 
 ### Pool Configuration
 

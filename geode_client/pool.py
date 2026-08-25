@@ -305,6 +305,8 @@ def create_pool_from_dsn(
         "graph": config.graph,
         "tenant": config.tenant,
         "role": config.role,
+        "read_timeout": config.read_timeout,
+        "idle_timeout": config.idle_timeout,
     }
     conn_kwargs.update(kwargs)
     return ConnectionPool(
