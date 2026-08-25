@@ -359,6 +359,105 @@ class TestConnectHelloHandshake:
         assert not request.HasField("role")
 
 
+class TestConnectionTimeouts:
+    """ENG-3914: configurable QUIC read/idle timeouts."""
+
+    def test_init_timeout_defaults(self):
+        """Connection defaults preserve the historical 30s/60s behaviour."""
+        conn = Connection()
+        assert conn.read_timeout == 30.0
+        assert conn.idle_timeout == 60.0
+
+    def test_init_timeout_overrides(self):
+        """Connection stores configured timeouts."""
+        conn = Connection(read_timeout=120.0, idle_timeout=180.0)
+        assert conn.read_timeout == 120.0
+        assert conn.idle_timeout == 180.0
+
+    @pytest.mark.asyncio
+    async def test_connect_threads_timeouts_into_transport_config(self):
+        """connect() forwards the timeouts to the TransportConfig."""
+        captured = {}
+
+        mock_transport = MagicMock()
+        mock_transport.session_id = "sess_1"
+        mock_transport.connect = AsyncMock()
+        mock_transport.close = AsyncMock()
+        hello_resp = MagicMock()
+        hello_resp.success = True
+        hello_resp.session_id = "sess_1"
+        hello_resp.error_message = ""
+        mock_transport.hello = AsyncMock(return_value=hello_resp)
+
+        def fake_create_transport(config):
+            captured["config"] = config
+            return mock_transport
+
+        with patch(
+            "geode_client.client.create_transport", side_effect=fake_create_transport
+        ):
+            conn = Connection(read_timeout=120.0, idle_timeout=180.0)
+            await conn.connect()
+
+        assert captured["config"].read_timeout == 120.0
+        assert captured["config"].idle_timeout == 180.0
+
+    def test_from_url_parses_timeouts(self):
+        """Client.from_url threads DSN timeout params into the connection config."""
+        client = Client.from_url(
+            "quic://localhost:3141?read_timeout=120&idle_timeout=180"
+        )
+        assert client.config["read_timeout"] == 120.0
+        assert client.config["idle_timeout"] == 180.0
+
+    @pytest.mark.asyncio
+    async def test_stream_pager_uses_configured_read_timeout(self):
+        """Streaming page reads use the configured read timeout, not a fixed 5s."""
+        import asyncio
+
+        conn = Connection(read_timeout=0.05)
+
+        stalled = asyncio.Event()
+
+        async def never_returns():
+            await stalled.wait()
+
+        transport = MagicMock()
+        transport.read_next = AsyncMock(side_effect=never_returns)
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(asyncio.TimeoutError):
+            await conn._read_execute_until_page(transport)
+        elapsed = loop.time() - start
+
+        # The hardcoded 5.0s timeout would make this take far longer.
+        assert elapsed < 1.0
+
+    @pytest.mark.asyncio
+    async def test_stream_pager_timeout_value_matches_config(self, monkeypatch):
+        """The timeout handed to asyncio.wait_for equals Connection.read_timeout."""
+        import asyncio
+
+        captured = {}
+        original_wait_for = asyncio.wait_for
+
+        async def recording_wait_for(awaitable, timeout):
+            captured["timeout"] = timeout
+            return await original_wait_for(awaitable, timeout)
+
+        monkeypatch.setattr(asyncio, "wait_for", recording_wait_for)
+
+        transport = MagicMock()
+        resp = MagicMock()
+        resp.HasField.return_value = False
+        transport.read_next = AsyncMock(return_value=resp)
+
+        conn = Connection(read_timeout=42.0)
+        assert await conn._read_execute_until_page(transport) is None
+        assert captured["timeout"] == 42.0
+
+
 class TestConnectionTransport:
     """Test Connection with mocked transport."""
 

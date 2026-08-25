@@ -213,6 +213,28 @@ class TestTransportConfig:
         assert config.password == ""
         assert config.page_size == 1000
 
+    def test_timeout_defaults(self):
+        """Test read_timeout/idle_timeout defaults (ENG-3914)."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+        )
+        assert config.read_timeout == 30.0
+        assert config.idle_timeout == 60.0
+
+    def test_timeout_overrides(self):
+        """Test read_timeout/idle_timeout can be configured."""
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+            read_timeout=120.0,
+            idle_timeout=180.0,
+        )
+        assert config.read_timeout == 120.0
+        assert config.idle_timeout == 180.0
+
     def test_all_fields(self):
         """Test TransportConfig with all fields set."""
         config = TransportConfig(
@@ -390,6 +412,49 @@ class TestDsnParsingEdgeCases:
         """Test DSN with no host defaults to 127.0.0.1."""
         config = parse_dsn("quic://:3141")
         assert config.host == "127.0.0.1"
+
+
+class TestTimeoutDsnParams:
+    """Test read_timeout/idle_timeout DSN parameters (ENG-3914)."""
+
+    def test_read_timeout_param(self):
+        """Test read_timeout query parameter is parsed as seconds."""
+        config = parse_dsn("quic://localhost:3141?read_timeout=120")
+        assert config.read_timeout == 120.0
+
+    def test_idle_timeout_param(self):
+        """Test idle_timeout query parameter is parsed as seconds."""
+        config = parse_dsn("quic://localhost:3141?idle_timeout=180")
+        assert config.idle_timeout == 180.0
+
+    def test_fractional_timeouts(self):
+        """Test timeout params accept fractional seconds."""
+        config = parse_dsn("quic://localhost:3141?read_timeout=2.5&idle_timeout=7.5")
+        assert config.read_timeout == 2.5
+        assert config.idle_timeout == 7.5
+
+    def test_timeouts_default_when_absent(self):
+        """Test timeouts fall back to defaults when not supplied."""
+        config = parse_dsn("quic://localhost:3141")
+        assert config.read_timeout == 30.0
+        assert config.idle_timeout == 60.0
+
+    def test_timeouts_round_trip_through_format_dsn(self):
+        """Test non-default timeouts survive format_dsn/parse_dsn round-trip."""
+        from geode_client.transport import format_dsn
+
+        config = parse_dsn("quic://localhost:3141?read_timeout=120&idle_timeout=180")
+        round_tripped = parse_dsn(format_dsn(config))
+        assert round_tripped.read_timeout == 120.0
+        assert round_tripped.idle_timeout == 180.0
+
+    def test_default_timeouts_not_emitted_by_format_dsn(self):
+        """Test format_dsn omits timeouts left at their defaults."""
+        from geode_client.transport import format_dsn
+
+        dsn = format_dsn(parse_dsn("quic://localhost:3141"))
+        assert "read_timeout" not in dsn
+        assert "idle_timeout" not in dsn
 
 
 class TestCreateTransportEdgeCases:
@@ -679,6 +744,152 @@ class TestQuicTransportUnit:
         transport._reader_queue.put_nowait(struct.pack(">I", 0))
         result = await transport.read_next()
         assert result is not None
+
+
+class TestQuicTransportTimeouts:
+    """Test configurable QUIC read/idle timeouts (ENG-3914)."""
+
+    @staticmethod
+    def _stalled_transport(**config_kwargs) -> QuicTransport:
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="localhost",
+            port=3141,
+            **config_kwargs,
+        )
+        transport = QuicTransport(config)
+        transport._connected = True
+        transport._buffer = bytearray()
+        # Queue that never receives data, so reads hit the timeout.
+        transport._reader_queue = asyncio.Queue()
+        return transport
+
+    @pytest.mark.asyncio
+    async def test_read_message_uses_config_read_timeout(self):
+        """_read_message defaults to config.read_timeout, not a hardcoded 30s."""
+        transport = self._stalled_transport(read_timeout=0.01)
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(TransportError, match="Timeout reading message length"):
+            await transport._read_message()
+        elapsed = loop.time() - start
+
+        # With the hardcoded 30.0 default this read would not return in time.
+        assert elapsed < 1.0
+
+    @pytest.mark.asyncio
+    async def test_read_message_body_uses_config_read_timeout(self):
+        """The body read honours config.read_timeout as well."""
+        transport = self._stalled_transport(read_timeout=0.01)
+        transport._reader_queue.put_nowait(struct.pack(">I", 100))
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(TransportError, match="Timeout reading message body"):
+            await transport._read_message()
+        elapsed = loop.time() - start
+
+        assert elapsed < 1.0
+
+    @pytest.mark.asyncio
+    async def test_explicit_read_timeout_overrides_config(self):
+        """An explicit read_timeout argument still wins over the config value."""
+        transport = self._stalled_transport(read_timeout=300.0)
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(TransportError, match="Timeout reading message length"):
+            await transport._read_message(read_timeout=0.01)
+        elapsed = loop.time() - start
+
+        assert elapsed < 1.0
+
+    @pytest.mark.asyncio
+    async def test_execute_uses_config_read_timeout(self):
+        """execute() inherits the configured read timeout (no hardcoded 30s)."""
+        from geode_client.proto import ExecuteRequest
+
+        transport = self._stalled_transport(read_timeout=0.01)
+        transport._protocol = MagicMock()
+        transport._stream_id = 0
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(TransportError, match="Timeout reading message"):
+            await transport.execute(ExecuteRequest())
+        elapsed = loop.time() - start
+
+        assert elapsed < 1.0
+
+    @pytest.mark.asyncio
+    async def test_quic_configuration_receives_idle_timeout(self, monkeypatch):
+        """QuicConfiguration is built with the configured idle_timeout."""
+        import aioquic.asyncio
+        import aioquic.quic.configuration
+        from aioquic.quic.configuration import QuicConfiguration
+
+        captured: dict = {}
+
+        class CapturingConfiguration(QuicConfiguration):
+            def __init__(self, *args, **kwargs):
+                captured.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        def fail_connect(*args, **kwargs):
+            raise RuntimeError("no network in unit tests")
+
+        monkeypatch.setattr(
+            aioquic.quic.configuration, "QuicConfiguration", CapturingConfiguration
+        )
+        monkeypatch.setattr(aioquic.asyncio, "connect", fail_connect)
+
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="127.0.0.1",
+            port=3141,
+            idle_timeout=180.0,
+        )
+        transport = QuicTransport(config)
+
+        with pytest.raises(TransportConnectionError):
+            await transport.connect()
+
+        assert captured.get("idle_timeout") == 180.0
+
+    @pytest.mark.asyncio
+    async def test_quic_configuration_idle_timeout_defaults(self, monkeypatch):
+        """The default idle_timeout (60s) is passed explicitly."""
+        import aioquic.asyncio
+        import aioquic.quic.configuration
+        from aioquic.quic.configuration import QuicConfiguration
+
+        captured: dict = {}
+
+        class CapturingConfiguration(QuicConfiguration):
+            def __init__(self, *args, **kwargs):
+                captured.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        def fail_connect(*args, **kwargs):
+            raise RuntimeError("no network in unit tests")
+
+        monkeypatch.setattr(
+            aioquic.quic.configuration, "QuicConfiguration", CapturingConfiguration
+        )
+        monkeypatch.setattr(aioquic.asyncio, "connect", fail_connect)
+
+        config = TransportConfig(
+            transport_type=TransportType.QUIC,
+            host="127.0.0.1",
+            port=3141,
+        )
+        transport = QuicTransport(config)
+
+        with pytest.raises(TransportConnectionError):
+            await transport.connect()
+
+        assert captured.get("idle_timeout") == 60.0
 
 
 class TestGrpcTransportUnit:

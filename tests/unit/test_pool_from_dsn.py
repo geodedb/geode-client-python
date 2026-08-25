@@ -26,6 +26,15 @@ class TestCreatePoolFromDSN:
         assert cfg["role"] == "analyst"
         assert cfg["graph"] == "g"
 
+    def test_carries_timeouts(self):
+        """ENG-3914: read/idle timeouts from the DSN reach pooled connections."""
+        pool = create_pool_from_dsn(
+            "quic://localhost:3141?read_timeout=120&idle_timeout=180"
+        )
+        cfg = pool.client.config
+        assert cfg["read_timeout"] == 120.0
+        assert cfg["idle_timeout"] == 180.0
+
     def test_pool_sizing_kwargs(self):
         pool = create_pool_from_dsn("quic://localhost:3141", min_size=2, max_size=7)
         assert pool.min_size == 2
