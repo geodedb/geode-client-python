@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-25
+
+### Added
+- Configurable QUIC timeouts (ENG-3914): `read_timeout` (per-message read,
+  default 30s) and `idle_timeout` (QUIC connection idle cap, default 60s) are
+  now fields on `TransportConfig`, keyword arguments on `Connection`/`Client`,
+  DSN query parameters (`?read_timeout=…&idle_timeout=…`, seconds) emitted by
+  `format_dsn` when non-default, and are threaded through `Client.from_url` and
+  `create_pool_from_dsn`. Defaults preserve the previous behaviour.
+
+### Fixed
+- ENG-3914: long-running server work no longer kills QUIC connections.
+  `QuicTransport._read_message` hardcoded a 30s read timeout (so every
+  execute/pull/ping/transaction call failed with "Timeout reading message
+  length" after 30s) and `QuicConfiguration` was built without `idle_timeout`,
+  letting aioquic's 60s default close the connection ("Stream closed") even
+  when the read timeout was raised. The streaming pager's hardcoded 5s
+  `wait_for` around `read_next()` now uses the configured read timeout.
+- ENG-3909: `Connection._proto_value_to_python` had no `decimal_val` arm, so
+  every FLOAT-typed engine result (float literals, arithmetic, `sqrt()`,
+  `vector_cosine()`, `CAST(... AS DECIMAL)`) decoded as NULL and embeddings
+  came back as `[None, None, …]`. The new arm prefers the engine's `orig_repr`
+  and otherwise scales the exact i128 coefficient, so no rounding or float
+  round-trip occurs. An unhandled oneof arm now raises `GeodeError` naming the
+  arm instead of silently fabricating NULL. `types._DECODERS` gained the float
+  family (FLOAT/DOUBLE/REAL/NUMERIC) and `Value.as_object` also serves
+  NODE/EDGE/PATH so nested FLOAT properties are reachable.
+- ENG-3910: `Connection._python_to_proto_value` had no container arm, so list
+  parameters were sent as `string_val` holding the Python repr and predicates
+  such as `WHERE NOT d.source IN $blocked` failed open. Lists/tuples now encode
+  as `list_val` and dicts as `map_val`, recursing per element with a depth
+  guard of 64 (mirroring the server/CLI `PARAM_MAX_DEPTH`); `bytes` and
+  `Decimal` get explicit `bytes_val`/`decimal_val` arms.
+
+## [0.4.1] - 2026-06-19
+
+### Fixed
+- Version-consistency test pinned the pre-0.4.0 version; package,
+  `setup.py`, and the guard test are back in lockstep.
+
+## [0.4.0] - 2026-06-19
+
 ### Added
 - Multi-tenancy + FLE support on the HELLO handshake (GAP-0841): `Connection`
   and `Client.from_url` now accept `tenant` (sent as `HelloRequest.tenant_id`)
