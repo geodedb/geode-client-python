@@ -47,6 +47,7 @@ pip install -e ".[dev]"
 import asyncio
 from geode_client import Client
 
+
 async def main():
     # Create client
     client = Client(host="127.0.0.1", port=3141, skip_verify=True)
@@ -60,6 +61,7 @@ async def main():
             greeting = row["greeting"].as_string
             print(f"x={x}, greeting={greeting}")
 
+
 asyncio.run(main())
 ```
 
@@ -67,6 +69,7 @@ asyncio.run(main())
 
 ```python
 from geode_client import open_database
+
 
 async def main():
     # Open database with QUIC transport (default)
@@ -76,6 +79,7 @@ async def main():
         page, _ = await conn.query("MATCH (n) RETURN n LIMIT 10")
         print(f"Found {len(page.rows)} nodes")
 
+
 asyncio.run(main())
 ```
 
@@ -84,6 +88,7 @@ asyncio.run(main())
 ```python
 from geode_client import open_database
 
+
 async def main():
     # Open database with gRPC transport
     client = open_database("grpc://localhost:50051")
@@ -91,6 +96,7 @@ async def main():
     async with client.connection() as conn:
         page, _ = await conn.query("RETURN 1 AS x")
         print(f"Result: {page.rows[0]['x'].as_int}")
+
 
 asyncio.run(main())
 ```
@@ -114,8 +120,7 @@ async with client.connection() as conn:
     await conn.begin()
     try:
         await conn.execute(
-            "CREATE (p:Person {name: $name, age: $age})",
-            {"name": "Bob", "age": 30}
+            "CREATE (p:Person {name: $name, age: $age})", {"name": "Bob", "age": 30}
         )
         await conn.commit()
         print("Transaction committed")
@@ -176,7 +181,7 @@ pool = ConnectionPool(
     port=3141,
     min_size=2,
     max_size=10,  # default is 3
-    skip_verify=True
+    skip_verify=True,
 )
 
 async with pool:
@@ -207,15 +212,13 @@ async with client.connection() as conn:
         username="newuser",
         email="user@example.com",
         password="secure123",
-        roles=["user"]
+        roles=["user"],
     )
     print(f"Created user: {user.username}")
 
     # Check permission
     has_perm = await auth.check_permission(
-        user_id=user.id,
-        resource="data",
-        action="read"
+        user_id=user.id, resource="data", action="read"
     )
     print(f"Has read permission: {has_perm}")
 
@@ -289,7 +292,7 @@ policy = RLSPolicy(
     roles=[1, 2],
     using_expression="owner_id = current_user_id()",
     enabled=True,
-    audit_level="READ"
+    audit_level="READ",
 )
 
 policy = await auth.create_rls_policy(policy)
@@ -341,7 +344,9 @@ grpc://host:port?param=value&param2=value2   # gRPC transport (default port 5005
 client = Client.from_url("quic://localhost")
 
 # QUIC with explicit port and options
-client = Client.from_url("quic://geode.example.com:3141?insecure_tls_skip_verify=true&page_size=500")
+client = Client.from_url(
+    "quic://geode.example.com:3141?insecure_tls_skip_verify=true&page_size=500"
+)
 
 # gRPC with default port (50051)
 client = Client.from_url("grpc://localhost")
@@ -425,7 +430,7 @@ client = Client(
     ca_cert="/path/to/ca.crt",
     client_cert="/path/to/client.crt",
     client_key="/path/to/client.key",
-    server_name="geode.example.com"
+    server_name="geode.example.com",
 )
 ```
 

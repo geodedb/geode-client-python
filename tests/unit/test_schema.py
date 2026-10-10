@@ -16,7 +16,7 @@ def schema_dir(tmp_path):
         "SELECT 1;\n"  # non-GQL keyword, dropped
     )
     (tmp_path / "02_edges.gql").write_text(
-        "MATCH (a), (b) CREATE (a)-[:KNOWS]->(b);\n" "DELETE (x);\n"
+        "MATCH (a), (b) CREATE (a)-[:KNOWS]->(b);\nDELETE (x);\n"
     )
     (tmp_path / "notes.txt").write_text("CREATE (ignored);")  # non-.gql
     sub = tmp_path / "sub"

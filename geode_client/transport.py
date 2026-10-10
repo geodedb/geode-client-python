@@ -651,7 +651,7 @@ class QuicTransport(Transport):
                 raise TransportError("Stream closed")
             self._buffer.extend(data)
 
-        msg_data = self._buffer[4:total_needed]
+        msg_data = bytes(self._buffer[4:total_needed])
         del self._buffer[:total_needed]
 
         # Server uses transparent oneof (fd(null)) so decode QuicServerMessage directly
@@ -675,7 +675,7 @@ class QuicTransport(Transport):
         if len(self._buffer) < total_needed:
             return None
 
-        msg_data = self._buffer[4:total_needed]
+        msg_data = bytes(self._buffer[4:total_needed])
         del self._buffer[:total_needed]
 
         # Server uses transparent oneof (fd(null)) so decode QuicServerMessage directly

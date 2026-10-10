@@ -110,9 +110,9 @@ class TestDecimalValDecode:
 
         assert result.kind is ValueKind.DECIMAL
         assert result.as_decimal == Decimal("1.500")
-        assert (
-            str(result.as_decimal) == "1.500"
-        ), "orig_repr should be used verbatim so the original scale survives"
+        assert str(result.as_decimal) == "1.500", (
+            "orig_repr should be used verbatim so the original scale survives"
+        )
 
     def test_decimal_val_falls_back_to_coeff_and_scale(self, conn):
         """With orig_repr empty, value is ``Decimal(coeff).scaleb(-scale)``."""
@@ -181,9 +181,9 @@ class TestDecimalValDecode:
         assert result.kind is ValueKind.ARRAY
         elements = result.as_array
         assert len(elements) == 3
-        assert [e.kind for e in elements] == [
-            ValueKind.DECIMAL
-        ] * 3, "embedding elements decoded as NULL (ENG-3909)"
+        assert [e.kind for e in elements] == [ValueKind.DECIMAL] * 3, (
+            "embedding elements decoded as NULL (ENG-3909)"
+        )
         assert [e.as_decimal for e in elements] == [
             Decimal("0.10"),
             Decimal("-0.25"),
