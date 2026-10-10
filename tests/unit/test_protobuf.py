@@ -418,9 +418,9 @@ class TestProtoDrift:
 
         vendored = (self._repo_root() / "proto" / "geode.proto").read_text()
         server = canonical.read_text()
-        assert hello_fields(vendored) == hello_fields(
-            server
-        ), "vendored HelloRequest has drifted from the canonical server proto"
+        assert hello_fields(vendored) == hello_fields(server), (
+            "vendored HelloRequest has drifted from the canonical server proto"
+        )
 
 
 class TestGrpcServiceStub:

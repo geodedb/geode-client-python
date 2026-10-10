@@ -294,6 +294,7 @@ Server responses are wrapped in `ServerPacket` -> `QuicServerMessage`:
 ```python
 from geode_client import Client
 
+
 async def example():
     client = Client(host="localhost", port=3141, skip_verify=True)
 
@@ -370,9 +371,11 @@ except ValidationError as e:
 import pytest
 from geode_client import Value, ValueKind
 
+
 def test_value_as_int():
     val = Value(kind=ValueKind.INT, int_value=42)
     assert val.as_int == 42
+
 
 def test_value_type_mismatch():
     val = Value(kind=ValueKind.STRING, str_value="hello")
@@ -394,8 +397,7 @@ async def test_create_node(connection):
     await connection.execute(f"CREATE (n:Test {{id: '{uid}'}})")
 
     page, _ = await connection.query(
-        "MATCH (n:Test {id: $id}) RETURN count(n) AS cnt",
-        {"id": uid}
+        "MATCH (n:Test {id: $id}) RETURN count(n) AS cnt", {"id": uid}
     )
     assert page.rows[0]["cnt"].as_int == 1
 ```
@@ -408,6 +410,7 @@ async def test_create_node(connection):
 
 ```python
 from hypothesis import given, strategies as st
+
 
 @given(value=st.integers())
 def test_decode_int_roundtrip(value):
