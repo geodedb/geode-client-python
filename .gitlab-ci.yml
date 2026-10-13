@@ -5,14 +5,14 @@
 
 include:
   # Install dependencies and create virtual environment
-  - component: gitlab.com/devnw/ci-catalog/python-install@latest
+  - component: gitlab.com/devnw/ci-catalog/python-install@v1.56.0
     inputs:
       stage: build
       python_version: "3.12"
       requirements_file: "requirements.txt"
 
   # Lint with black, ruff, and optionally mypy
-  - component: gitlab.com/devnw/ci-catalog/python-lint@latest
+  - component: gitlab.com/devnw/ci-catalog/python-lint@v1.56.0
     inputs:
       stage: lint
       python_version: "3.12"
@@ -22,7 +22,7 @@ include:
       run_mypy: false  # Enable when type hints are complete
 
   # Unit tests with pytest
-  - component: gitlab.com/devnw/ci-catalog/python-test@latest
+  - component: gitlab.com/devnw/ci-catalog/python-test@v1.56.0
     inputs:
       stage: test
       python_version: "3.12"
@@ -31,7 +31,7 @@ include:
       coverage: false
 
   # Coverage reports (using @main until released)
-  - component: gitlab.com/devnw/ci-catalog/python-coverage@main
+  - component: gitlab.com/devnw/ci-catalog/python-coverage@v1.56.0
     inputs:
       stage: coverage
       python_version: "3.12"
@@ -41,39 +41,39 @@ include:
       output_dir: "coverage"
 
   # Benchmarks (using @main until released)
-  - component: gitlab.com/devnw/ci-catalog/python-benchmark@main
+  - component: gitlab.com/devnw/ci-catalog/python-benchmark@v1.56.0
     inputs:
       stage: benchmark
       python_version: "3.12"
       benchmark_path: "benchmarks/"
 
   # Security scanning
-  - component: gitlab.com/devnw/ci-catalog/security-sast@latest
+  - component: gitlab.com/devnw/ci-catalog/security-sast@v1.56.0
     inputs:
       stage: security
 
-  - component: gitlab.com/devnw/ci-catalog/security-dependency-scanning@latest
+  - component: gitlab.com/devnw/ci-catalog/security-dependency-scanning@v1.56.0
     inputs:
       stage: security
 
-  - component: gitlab.com/devnw/ci-catalog/security-secrets@latest
+  - component: gitlab.com/devnw/ci-catalog/security-secrets@v1.56.0
     inputs:
       stage: security
 
-  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@latest
+  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@v1.56.0
 
   # SBOM generation and scanning
-  - component: gitlab.com/devnw/ci-catalog/sbom-generate@latest
+  - component: gitlab.com/devnw/ci-catalog/sbom-generate@v1.56.0
 
-  - component: gitlab.com/devnw/ci-catalog/sbom-scan@latest
+  - component: gitlab.com/devnw/ci-catalog/sbom-scan@v1.56.0
 
   # Release creation
-  - component: gitlab.com/devnw/ci-catalog/release-semantic@latest
+  - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.56.0
     inputs:
       stage: release
 
   # PyPI Publishing (OIDC trusted publishing)
-  - component: gitlab.com/devnw/ci-catalog/python-publish@main
+  - component: gitlab.com/devnw/ci-catalog/python-publish@v1.56.0
     inputs:
       stage: publish
       python_version: "3.12"
