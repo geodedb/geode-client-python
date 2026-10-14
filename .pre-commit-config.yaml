@@ -1,93 +1,46 @@
-# Pre-commit configuration for Geode Python Client
-# https://pre-commit.com/
-
+minimum_pre_commit_version: '4.6.0'
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [pre-commit]
 fail_fast: false
+exclude: |
+  (?x)^(
+    vendor/|
+    legacy/|
+    dist/|
+    build/|
+    node_modules/|
+    .*/.terraform/|
+    .*/zig-cache/|
+    .*/zig-out/
+  )
 
 repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v5.0.0
-  hooks:
-  - id: trailing-whitespace
-    args: [--markdown-linebreak-ext=md]
-  - id: end-of-file-fixer
-  - id: mixed-line-ending
-    args: [--fix=lf]
-  - id: check-yaml
-  - id: check-json
-  - id: check-toml
-  - id: detect-private-key
-  - id: check-added-large-files
-    args: [--maxkb=1024]
-  - id: check-merge-conflict
-  - id: check-case-conflict
-  - id: check-symlinks
-  - id: destroyed-symlinks
-  - id: check-executables-have-shebangs
-  - id: check-shebang-scripts-are-executable
-
-- repo: https://github.com/shellcheck-py/shellcheck-py
-  rev: v0.10.0.1
-  hooks:
-  - id: shellcheck
-    args: [--severity=error, --shell=bash]
-
-- repo: https://github.com/igorshubovych/markdownlint-cli
-  rev: v0.43.0
-  hooks:
-  - id: markdownlint
-    args: [--fix, --disable, MD013, MD033, MD041, MD024, --]
-    exclude: ^(CHANGELOG\.md)
-
-- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-  rev: v2.14.0
-  hooks:
-  - id: pretty-format-yaml
-    args: [--autofix, --indent, '2']
-    exclude: ^(\.gitlab-ci\.yml)
-
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.8.6
-  hooks:
-  - id: ruff
-    args: [--fix]
-    exclude: ^geode_client/proto/
-  - id: ruff-format
-    exclude: ^geode_client/proto/
-
-- repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.14.1
-  hooks:
-  - id: mypy
-    additional_dependencies: [types-setuptools, types-protobuf, grpc-stubs]
-    args: [--ignore-missing-imports]
-    exclude: ^(geode_client/proto/|tests/|examples/|benchmarks/|setup\.py)
-
-- repo: https://github.com/commitizen-tools/commitizen
-  rev: v4.1.0
-  hooks:
-  - id: commitizen
-    stages: [commit-msg]
-
-- repo: local
-  hooks:
-  - id: check-todos
-    name: check for TODOs/FIXMEs
-    entry: bash
-    args:
-    - -c
-    - |
-      git diff --cached --name-only | xargs grep -l -E "(TODO|FIXME|XXX|HACK)" 2>/dev/null && echo "Warning: Found TODO/FIXME markers in staged files" && exit 0 || exit 0
-    language: system
-    pass_filenames: false
-    verbose: true
-
-ci:
-  autofix_prs: true
-  autofix_commit_msg: '[pre-commit.ci] auto fixes'
-  autoupdate_schedule: weekly
-  # mypy is skipped in pre-commit.ci because it requires package installation
-  # and full type stub dependencies that aren't available in the CI environment.
-  # Type checking is enforced in GitLab CI via the dedicated mypy job instead.
-  skip: [mypy]
-  submodules: false
+  - repo: git@gitlab.com:devnw/utility-projects/org-pre-commit-hooks
+    rev: v0.1.5
+    hooks:
+      - id: org-trailing-whitespace
+      - id: org-end-of-file-fixer
+      - id: org-mixed-line-ending
+        args: ["--fix=lf"]
+      - id: org-check-yaml
+      - id: org-check-json
+      - id: org-check-toml
+      - id: org-check-xml
+      - id: org-check-merge-conflict
+      - id: org-check-case-conflict
+      - id: org-check-symlinks
+      - id: org-check-shebang-scripts-are-executable
+      - id: org-check-executables-have-shebangs
+      - id: org-check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: org-detect-private-key
+      - id: org-check-todos
+      - id: org-conventional-commit
+      - id: org-conventional-branch
+      - id: org-shellcheck
+      - id: org-shfmt
+      - id: org-markdownlint-cli2
+      - id: org-make-pre-commit
+      - id: org-ruff
+      - id: org-ruff-format
+      - id: org-gitlab-ci-lint
