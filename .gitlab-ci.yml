@@ -5,15 +5,17 @@
 
 include:
   # Install dependencies and create virtual environment
-  - component: gitlab.com/devnw/ci-catalog/python-install@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/python-install@v1.57.0
     inputs:
+      tags: [company, linux, x86]
       stage: build
       python_version: "3.12"
       requirements_file: "requirements.txt"
 
   # Lint with black, ruff, and optionally mypy
-  - component: gitlab.com/devnw/ci-catalog/python-lint@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/python-lint@v1.57.0
     inputs:
+      tags: [company, linux, x86]
       stage: lint
       python_version: "3.12"
       source_path: "geode_client/"
@@ -22,8 +24,9 @@ include:
       run_mypy: false  # Enable when type hints are complete
 
   # Unit tests with pytest
-  - component: gitlab.com/devnw/ci-catalog/python-test@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/python-test@v1.57.0
     inputs:
+      tags: [company, linux, x86]
       stage: test
       python_version: "3.12"
       test_path: "tests/unit/"
@@ -31,8 +34,9 @@ include:
       coverage: false
 
   # Coverage reports (using @main until released)
-  - component: gitlab.com/devnw/ci-catalog/python-coverage@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/python-coverage@v1.57.0
     inputs:
+      tags: [company, linux, x86]
       stage: coverage
       python_version: "3.12"
       source_path: "geode_client"
@@ -41,40 +45,49 @@ include:
       output_dir: "coverage"
 
   # Benchmarks (using @main until released)
-  - component: gitlab.com/devnw/ci-catalog/python-benchmark@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/python-benchmark@v1.57.0
     inputs:
+      tags: [company, linux, x86]
       stage: benchmark
       python_version: "3.12"
       benchmark_path: "benchmarks/"
 
   # Security scanning
-  - component: gitlab.com/devnw/ci-catalog/security-sast@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/security-sast@v1.57.0
     inputs:
       stage: security
 
-  - component: gitlab.com/devnw/ci-catalog/security-dependency-scanning@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/security-dependency-scanning@v1.57.0
     inputs:
       stage: security
 
-  - component: gitlab.com/devnw/ci-catalog/security-secrets@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/security-secrets@v1.57.0
     inputs:
       stage: security
 
-  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@v1.57.0
+    inputs:
+      tags: [company, linux, x86]
 
   # SBOM generation and scanning
-  - component: gitlab.com/devnw/ci-catalog/sbom-generate@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/sbom-generate@v1.57.0
+    inputs:
+      tags: [company, linux, x86]
 
-  - component: gitlab.com/devnw/ci-catalog/sbom-scan@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/sbom-scan@v1.57.0
+    inputs:
+      tags: [company, linux, x86]
 
   # Release creation
-  - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.57.0
     inputs:
+      tags: [company, linux, x86]
       stage: release
 
   # PyPI Publishing (OIDC trusted publishing)
-  - component: gitlab.com/devnw/ci-catalog/python-publish@v1.56.0
+  - component: gitlab.com/devnw/ci-catalog/python-publish@v1.57.0
     inputs:
+      tags: [company, linux, x86]
       stage: publish
       python_version: "3.12"
       repository: "pypi"
@@ -82,9 +95,12 @@ include:
       needs: "python-install"
 
 default:
+  # x86: the python:3.12 image is amd64-only. Jobs tagged only company,linux
+  # land on the ARM GPU runners and die with "exec format error".
   tags:
     - company
     - linux
+    - x86
 
 stages:
   - build
