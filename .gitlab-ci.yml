@@ -94,6 +94,12 @@ include:
       environment: "pypi"
       needs: "python-install"
 
+workflow:
+  # SRE-172: a newer commit on the same ref cancels the superseded pipeline's
+  # interruptible (validation) jobs. Release/deploy jobs stay non-interruptible.
+  auto_cancel:
+    on_new_commit: interruptible
+
 default:
   # x86: the python:3.12 image is amd64-only. Jobs tagged only company,linux
   # land on the ARM GPU runners and die with "exec format error".
@@ -141,6 +147,7 @@ sbom-scan:
 # =============================================================================
 
 mypy:
+  interruptible: true
   stage: lint
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
   before_script:
@@ -161,6 +168,7 @@ mypy:
 # =============================================================================
 
 test:property:
+  interruptible: true
   stage: test
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
   before_script:
@@ -194,6 +202,7 @@ test:property:
 # =============================================================================
 
 test:integration:
+  interruptible: true
   stage: integration
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
   services:
@@ -244,6 +253,7 @@ test:integration:
 # =============================================================================
 
 pages:
+  interruptible: false
   stage: pages
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
   before_script:
