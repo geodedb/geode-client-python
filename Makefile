@@ -323,7 +323,7 @@ docker-shell:
 # CI Targets
 # =============================================================================
 
-ci: install-dev fmt-check lint typecheck test coverage bench-quick
+ci: install-dev fmt-check lint typecheck test-property coverage bench-quick
 	@echo ""
 	@echo "==== CI Pipeline Complete ===="
 	@echo "✓ Dependencies installed"

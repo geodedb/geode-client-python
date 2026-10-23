@@ -5,51 +5,45 @@
 
 include:
   # Install dependencies and create virtual environment
-  - component: gitlab.com/devnw/ci-catalog/python-install@aad997d40e358eeef7ec943f761498341c37c724
+  - component: gitlab.com/devnw/ci-catalog/python-install@a2054f9a5ee951bb49b5cccd8c17200901999c00
     inputs:
       tags: [company, linux, x86]
       stage: build
       python_version: "3.12"
+      cache_lockfile: "requirements.txt"
       requirements_file: "requirements.txt"
 
   # Lint with black, ruff, and optionally mypy
-  - component: gitlab.com/devnw/ci-catalog/python-lint@aad997d40e358eeef7ec943f761498341c37c724
+  - component: gitlab.com/devnw/ci-catalog/python-lint@a2054f9a5ee951bb49b5cccd8c17200901999c00
     inputs:
       tags: [company, linux, x86]
       stage: lint
       python_version: "3.12"
+      cache_lockfile: "requirements.txt"
       source_path: "geode_client/"
       run_black: false
       run_ruff: true
       run_mypy: false  # Enable when type hints are complete
 
-  # Unit tests with pytest
-  - component: gitlab.com/devnw/ci-catalog/python-test@aad997d40e358eeef7ec943f761498341c37c724
+  # One unit-test pass produces coverage and enforces the existing 80% gate.
+  - component: gitlab.com/devnw/ci-catalog/python-coverage@a2054f9a5ee951bb49b5cccd8c17200901999c00
     inputs:
       tags: [company, linux, x86]
       stage: test
       python_version: "3.12"
-      test_path: "tests/unit/"
-      pytest_args: "-v --tb=short"
-      coverage: false
-
-  # Coverage reports (using @main until released)
-  - component: gitlab.com/devnw/ci-catalog/python-coverage@aad997d40e358eeef7ec943f761498341c37c724
-    inputs:
-      tags: [company, linux, x86]
-      stage: coverage
-      python_version: "3.12"
+      cache_lockfile: "requirements.txt"
       source_path: "geode_client"
       test_path: "tests/unit/"
       coverage_threshold: "80"
       output_dir: "coverage"
 
   # Benchmarks (using @main until released)
-  - component: gitlab.com/devnw/ci-catalog/python-benchmark@aad997d40e358eeef7ec943f761498341c37c724
+  - component: gitlab.com/devnw/ci-catalog/python-benchmark@a2054f9a5ee951bb49b5cccd8c17200901999c00
     inputs:
       tags: [company, linux, x86]
       stage: benchmark
       python_version: "3.12"
+      cache_lockfile: "requirements.txt"
       benchmark_path: "benchmarks/"
 
   # Security scanning
@@ -78,6 +72,7 @@ include:
       tags: [company, linux, x86]
       stage: publish
       python_version: "3.12"
+      cache_lockfile: "requirements.txt"
       repository: "pypi"
       environment: "pypi"
       needs: "python-install"
@@ -109,22 +104,41 @@ stages:
   - integration
   - security
   - sbom
-  - coverage
   - benchmark
   - pages
   - release
   - publish
 
 variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
   PYTHONPATH: "$CI_PROJECT_DIR"
 
-# Global cache for Python dependencies
-cache:
-  key: python-${CI_COMMIT_REF_SLUG}
-  paths:
-    - .pip-cache/
-    - .venv/
+# Only Python jobs restore the environment and download cache.
+.python-validation-cache:
+  cache:
+    key:
+      prefix: python-3.12
+      files: [requirements.txt]
+    paths:
+      - .cache/pip
+      - .cache/uv
+      - .venv/
+    policy: pull
+
+# Validate merge requests as well as the existing branch/tag pipelines.
+# Jobs without rules are excluded from MR pipelines by GitLab's default.
+python-install:
+  rules:
+    - when: on_success
+
+python-lint:
+  rules:
+    - when: on_success
+
+python-coverage:
+  rules:
+    - when: on_success
 
 # =============================================================================
 # SBOM overrides
@@ -141,6 +155,9 @@ sbom-scan:
 # =============================================================================
 
 mypy:
+  extends: .python-validation-cache
+  rules:
+    - when: on_success
   interruptible: true
   stage: lint
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
@@ -162,6 +179,7 @@ mypy:
 # =============================================================================
 
 test:property:
+  extends: .python-validation-cache
   interruptible: true
   stage: test
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
@@ -170,8 +188,7 @@ test:property:
       if [ -d ".venv" ]; then
         source .venv/bin/activate
       else
-        # MR pipelines have no python-install job (catalog jobs have no
-        # merge_request_event rules), so install the pinned requirements here.
+        # Keep a cold-environment fallback for isolated job execution.
         pip install -r requirements.txt
       fi
       # SEC-023: Pin package versions to prevent supply chain attacks
@@ -183,10 +200,9 @@ test:property:
     reports:
       junit: report-property.xml
     expire_in: 1 week
-  # python-install only exists in branch/tag pipelines, not MR pipelines.
   needs:
     - job: python-install
-      optional: true
+      artifacts: true
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -196,6 +212,7 @@ test:property:
 # =============================================================================
 
 test:integration:
+  extends: .python-validation-cache
   interruptible: true
   stage: integration
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
@@ -243,12 +260,11 @@ test:integration:
     reports:
       junit: report-integration.xml
     expire_in: 1 week
-  # python-install and python-test only exist in branch/tag pipelines.
   needs:
     - job: python-install
-      optional: true
-    - job: python-test
-      optional: true
+      artifacts: true
+    - job: python-coverage
+      artifacts: false
   allow_failure: true  # Allow failure until Geode server image is published
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -260,6 +276,7 @@ test:integration:
 # =============================================================================
 
 pages:
+  extends: .python-validation-cache
   interruptible: false
   stage: pages
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
@@ -306,7 +323,6 @@ pages:
 python-publish-pypi:
   needs:
     - python-install
-    - python-test
     - python-coverage
   rules:
     # Automatically publish on semantic version tags (e.g., v1.0.0, v1.2.3-beta.1)
@@ -316,7 +332,7 @@ python-publish-pypi:
 python-publish-gitlab:
   needs:
     - python-install
-    - python-test
+    - python-coverage
   rules:
     # On all version tags
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/
@@ -325,7 +341,6 @@ python-publish-gitlab:
 python-publish-token:
   needs:
     - python-install
-    - python-test
     - python-coverage
   rules:
     # Only when explicitly triggered and PYPI_TOKEN is set
