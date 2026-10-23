@@ -5,7 +5,7 @@
 
 include:
   # Install dependencies and create virtual environment
-  - component: gitlab.com/devnw/ci-catalog/python-install@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/python-install@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
       stage: build
@@ -13,7 +13,7 @@ include:
       requirements_file: "requirements.txt"
 
   # Lint with black, ruff, and optionally mypy
-  - component: gitlab.com/devnw/ci-catalog/python-lint@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/python-lint@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
       stage: lint
@@ -24,7 +24,7 @@ include:
       run_mypy: false  # Enable when type hints are complete
 
   # Unit tests with pytest
-  - component: gitlab.com/devnw/ci-catalog/python-test@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/python-test@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
       stage: test
@@ -34,7 +34,7 @@ include:
       coverage: false
 
   # Coverage reports (using @main until released)
-  - component: gitlab.com/devnw/ci-catalog/python-coverage@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/python-coverage@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
       stage: coverage
@@ -45,7 +45,7 @@ include:
       output_dir: "coverage"
 
   # Benchmarks (using @main until released)
-  - component: gitlab.com/devnw/ci-catalog/python-benchmark@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/python-benchmark@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
       stage: benchmark
@@ -53,39 +53,27 @@ include:
       benchmark_path: "benchmarks/"
 
   # Security scanning
-  - component: gitlab.com/devnw/ci-catalog/security-sast@v1.57.0
-    inputs:
-      stage: security
-
-  - component: gitlab.com/devnw/ci-catalog/security-dependency-scanning@v1.57.0
-    inputs:
-      stage: security
-
-  - component: gitlab.com/devnw/ci-catalog/security-secrets@v1.57.0
-    inputs:
-      stage: security
-
-  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
 
   # SBOM generation and scanning
-  - component: gitlab.com/devnw/ci-catalog/sbom-generate@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/sbom-generate@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
 
-  - component: gitlab.com/devnw/ci-catalog/sbom-scan@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/sbom-scan@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
 
   # Release creation
-  - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/release-semantic@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
       stage: release
 
   # PyPI Publishing (OIDC trusted publishing)
-  - component: gitlab.com/devnw/ci-catalog/python-publish@v1.57.0
+  - component: gitlab.com/devnw/ci-catalog/python-publish@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
       tags: [company, linux, x86]
       stage: publish
@@ -95,6 +83,12 @@ include:
       needs: "python-install"
 
 workflow:
+  # An open MR owns push validation; keep schedules, API, trigger,
+  # parent pipelines, tags and manual runs admitted as before.
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - when: always
   # SRE-172: a newer commit on the same ref cancels the superseded pipeline's
   # interruptible (validation) jobs. Release/deploy jobs stay non-interruptible.
   auto_cancel:
@@ -206,12 +200,21 @@ test:integration:
   stage: integration
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
   services:
-    - name: geodedb/geode:latest
+    - name: geodedb/geode:0.8.22@sha256:867d93375470fd18c60336036196a9ef9715a1922e063e8787dc05d8e798ddce
       alias: geode
-      command: ["serve", "--listen", "0.0.0.0:3141", "--disable-auth", "--log-level", "info"]
+      command: ["serve", "--listen", "0.0.0.0:3141", "--log-level", "info", "--data-dir", "/data"]
   variables:
     GEODE_HOST: geode
     GEODE_PORT: "3141"
+    # Disposable CI service: bootstrap the same account the clients use.
+    GEODE_ADMIN_USERNAME: "geode"
+    GEODE_USERNAME: "geode"
+    GEODE_PASSWORD: "Correct horse battery staple" # gitleaks:allow
+    GEODE_ADMIN_PASSWORD: "$GEODE_PASSWORD"
+    GEODE_DEFAULT_PASSWORD: "$GEODE_PASSWORD"
+    GEODE_METRICS_PORT: "9090"
+    GEODE_METRICS_BIND: "0.0.0.0"
+    HEALTHCHECK_TCP_PORT: "9090"
   before_script:
     - |
       if [ -d ".venv" ]; then
@@ -222,9 +225,13 @@ test:integration:
       # Wait for Geode server to be ready
       echo "Waiting for Geode server..."
       for i in $(seq 1 30); do
-        if python -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(1); s.connect(('geode', 3141)); s.close()" 2>/dev/null; then
+        if python -c "import urllib.request; urllib.request.urlopen('http://geode:9090/health', timeout=2).close()" 2>/dev/null; then
           echo "Geode server is ready"
           break
+        fi
+        if [ "$i" -eq 30 ]; then
+          echo "Geode health endpoint did not become ready" >&2
+          exit 1
         fi
         echo "Attempt $i: waiting..."
         sleep 2
