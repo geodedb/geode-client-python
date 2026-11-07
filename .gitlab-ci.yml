@@ -218,7 +218,7 @@ test:integration:
   stage: integration
   image: registry.gitlab.com/devnw/ci-catalog/python:3.12
   services:
-    - name: geodedb/geode:0.8.23@sha256:48a24f3739bda9017536cdd7b9b0c14474d0cc643d0b202560465d3834b9587a
+    - name: geodedb/geode:0.8.24@sha256:5ba731e38f8c22b45237448be3c09bb23fcccf85a86e4536d5e5112d0ef084db
       alias: geode
       command: ["serve", "--listen", "0.0.0.0:3141", "--log-level", "info", "--data-dir", "/data"]
   variables:
