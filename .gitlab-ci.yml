@@ -63,6 +63,7 @@ include:
   # Release creation
   - component: gitlab.com/devnw/ci-catalog/release-semantic@aad997d40e358eeef7ec943f761498341c37c724
     inputs:
+      release_auth: job_token
       tags: [company, linux, x86]
       stage: release
 
