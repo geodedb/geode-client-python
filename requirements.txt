@@ -8,7 +8,7 @@ cryptography>=50.0.2,<50.1.0
 
 # Development dependencies (with upper bounds)
 pytest>=9.1.1,<10.0.0
-pytest-asyncio>=1.4.0,<1.5.0
+pytest-asyncio>=1.5.0,<1.6.0
 black>=26.10.1,<27.0.0
 Pygments>=2.21.0,<3.0.0
 mypy>=2.4.0,<2.5.0
