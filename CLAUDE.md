@@ -477,9 +477,16 @@ pool = ConnectionPool(timeout=60.0, ...)
 
 ### Required
 
-- `aioquic>=0.9.0` - QUIC transport implementation
-- `protobuf>=6.31.0` - Protobuf wire format
-- `grpcio>=1.50.0` - gRPC transport implementation
+- `aioquic>=0.9.22` - QUIC transport implementation
+- `protobuf>=6.33.5` - Protobuf wire format
+- `grpcio>=1.73.1` - gRPC transport implementation (the generated stub refuses older grpcio)
+- `pyOpenSSL>=26.4.0`, `cryptography>=50.0.0` - TLS
+
+Runtime floors must be identical in `setup.py` and `requirements.txt`.
+`python scripts/check_min_deps.py` (CI job `test:min-deps`) installs every
+runtime dependency at its floor in a clean venv and imports the package; after
+regenerating the stubs, raise the `grpcio`/`protobuf` floors to the versions in
+their `GRPC_GENERATED_VERSION` / `ValidateProtobufRuntimeVersion` guards.
 
 ### Development
 

@@ -210,6 +210,24 @@ test:property:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 # =============================================================================
+# Minimum Dependency Versions (SONNY-6723)
+# =============================================================================
+# Installs the package into a clean venv with every runtime dependency pinned
+# to the floor declared in setup.py (which must equal requirements.txt) and
+# proves `import geode_client` works. Deliberately does not reuse the cached
+# .venv, which resolves the newest allowed versions.
+
+test:min-deps:
+  interruptible: true
+  stage: test
+  image: registry.gitlab.com/devnw/ci-catalog/python:3.12
+  needs: []
+  script:
+    - python scripts/check_min_deps.py
+  rules:
+    - when: on_success
+
+# =============================================================================
 # Integration Tests (requires Geode server)
 # =============================================================================
 

@@ -14,7 +14,7 @@ if readme_path.exists():
 
 setup(
     name="geode-client",
-    version="0.5.0",
+    version="0.5.1",
     author="CodePros",
     author_email="codepros@devnw.com",
     description="Python QUIC/gRPC client library for Geode graph database",
@@ -46,11 +46,17 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        "aioquic>=0.9.0",  # QUIC transport
-        "protobuf>=6.31.0",  # Protobuf wire format (generated with 6.31.1)
-        "grpcio>=1.50.0",  # gRPC transport
-        "pyOpenSSL>=26.0.0",  # CVE-2026-27459 fix
-        "cryptography>=44.0.0",  # CVE fix: DNS name validation
+        # Floors must match requirements.txt and are proven importable by
+        # scripts/check_min_deps.py (CI job test:min-deps), SONNY-6723.
+        "aioquic>=0.9.22",  # QUIC transport (StopSendingReceived added in 0.9.22)
+        # Gencode 6.31.0 needs runtime >=6.31.0; 6.33.5 fixes CVE-2025-4565 and
+        # CVE-2026-0994. Runtime 7.x accepts this gencode.
+        "protobuf>=6.33.5",
+        # geode_pb2_grpc.py raises at import below GRPC_GENERATED_VERSION.
+        "grpcio>=1.73.1",  # gRPC transport
+        # CVE-2026-27459/27448 fixed in 26.0.0; 26.4.0 admits cryptography 50.
+        "pyOpenSSL>=26.4.0",
+        "cryptography>=50.0.0",  # CVE-2026-69247/69248/69249 fixes
     ],
     extras_require={
         "dev": [
@@ -65,7 +71,7 @@ setup(
             "black>=25.0.0",  # CVE fix
             "pre-commit>=3.0.0",
             "commitizen>=3.0.0",
-            "grpcio-tools>=1.50.0",  # For protobuf code generation
+            "grpcio-tools>=1.73.1",  # Generator of the committed stubs
         ],
         "integration": [
             "pytest>=7.0.0",

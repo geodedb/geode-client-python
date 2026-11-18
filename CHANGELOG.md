@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-17
+
+### Fixed
+- SONNY-6723: the declared dependency floors could not import the client.
+  `setup.py` declared `grpcio>=1.50.0`, but the committed `geode_pb2_grpc.py`
+  raises `RuntimeError` at import below its `GRPC_GENERATED_VERSION` (1.73.1),
+  and `import geode_client` loads that stub eagerly. The other floors were also
+  unsatisfiable or too old: `aioquic>=0.9.0` lacks `StopSendingReceived` (added
+  in 0.9.22) and has no wheel for current Pythons, `pyOpenSSL>=26.0.0` requires
+  `cryptography>=46`, contradicting `cryptography>=44.0.0`, and `requirements.txt`
+  declared different floors from `setup.py`. Runtime floors are now identical
+  in `setup.py` and `requirements.txt`: `aioquic>=0.9.22`, `protobuf>=6.33.5`
+  (gencode needs >=6.31.0; 6.33.5 fixes CVE-2025-4565 and CVE-2026-0994;
+  protobuf 7.x is supported), `grpcio>=1.73.1`, `pyOpenSSL>=26.4.0`, and
+  `cryptography>=50.0.0` (fixes CVE-2026-69247/69248/69249). The `dev` extra's
+  `grpcio-tools` floor is now 1.73.1, the generator of the committed stubs.
+
+### Added
+- `scripts/check_min_deps.py` and the `test:min-deps` CI job install the
+  package into a clean venv with every runtime dependency at its declared floor
+  and prove `import geode_client` works; `tests/unit/test_dependency_floors.py`
+  checks the floors against the stubs' version guards and against
+  `requirements.txt`.
+
 ## [0.5.0] - 2026-08-25
 
 ### Added

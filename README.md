@@ -34,9 +34,10 @@ pip install -e ".[dev]"
 ## Requirements
 
 - Python 3.9+
-- aioquic >= 0.9.0 (for QUIC transport)
-- protobuf >= 6.31.0 (wire format)
-- grpcio >= 1.50.0 (for gRPC transport)
+- aioquic >= 0.9.22 (for QUIC transport)
+- protobuf >= 6.33.5 (wire format)
+- grpcio >= 1.73.1 (for gRPC transport)
+- pyOpenSSL >= 26.4.0, cryptography >= 50.0.0
 - Running Geode server with QUIC or gRPC enabled
 
 ## Quick Start
