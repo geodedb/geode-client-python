@@ -5,7 +5,7 @@ from pathlib import Path
 
 import geode_client
 
-EXPECTED_VERSION = "0.5.0"
+EXPECTED_VERSION = "0.5.1"
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SETUP_PY = _REPO_ROOT / "setup.py"
@@ -27,9 +27,9 @@ class TestVersionConsistency:
         assert geode_client.__version__ == _setup_version()
 
     def test_package_version_is_expected(self):
-        """The declared package version is the released 0.5.0."""
+        """The declared package version is the released 0.5.1."""
         assert geode_client.__version__ == EXPECTED_VERSION
 
     def test_setup_version_is_expected(self):
-        """setup.py declares the released 0.5.0."""
+        """setup.py declares the released 0.5.1."""
         assert _setup_version() == EXPECTED_VERSION
