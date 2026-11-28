@@ -33,7 +33,7 @@ repos:
     args: [--severity=error, --shell=bash]
 
 - repo: https://github.com/igorshubovych/markdownlint-cli
-  rev: v0.50.0
+  rev: v0.50.1
   hooks:
   - id: markdownlint
     args: [--fix, --disable, MD013, MD033, MD041, MD024, --]
@@ -64,7 +64,7 @@ repos:
     exclude: ^(geode_client/proto/|tests/|examples/|benchmarks/|setup\.py)
 
 - repo: https://github.com/commitizen-tools/commitizen
-  rev: v4.19.4
+  rev: v4.20.1
   hooks:
   - id: commitizen
     stages: [commit-msg]
